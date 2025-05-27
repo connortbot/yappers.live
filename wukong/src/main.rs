@@ -5,13 +5,18 @@ use axum::{
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use std::sync::Arc;
+mod lobby_controller;
+mod lobby;
+use lobby::lobby_manager::LobbyManager;
+
 #[derive(OpenApi)]
 #[openapi(
-    paths(hello_world),
+    paths(ping),
     info(
-        title = "Yappers API",
+        title = "Wukong API",
         version = "0.1.0",
-        description = "API for Yappers multiplayer party games"
+        description = "Yappers backend."
     )
 )]
 struct ApiDoc;
@@ -21,17 +26,20 @@ struct ApiDoc;
     get,
     path = "/",
     responses(
-        (status = 200, description = "Hello message", body = String)
+        (status = 200, description = "ping", body = String)
     )
 )]
-async fn hello_world() -> &'static str {
-    "Hello, World!"
+async fn ping() -> &'static str {
+    "pong"
 }
 
 #[tokio::main]
 async fn main() {
+    let lobby_manager = Arc::new(LobbyManager::new());
+
     let app = Router::new()
-        .route("/", get(hello_world))
+        .route("/", get(ping))
+        .merge(lobby_controller::routes(lobby_manager))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
