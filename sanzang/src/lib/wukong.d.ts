@@ -11,9 +11,41 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["hello_world"];
+        get: operations["ping"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lobby/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_lobby"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lobby/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["join_lobby"];
         delete?: never;
         options?: never;
         head?: never;
@@ -23,7 +55,15 @@ export interface paths {
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
+    schemas: {
+        CreateLobbyRequest: {
+            username: string;
+        };
+        JoinLobbyRequest: {
+            lobby_code: string;
+            username: string;
+        };
+    };
     responses: never;
     parameters: never;
     requestBodies: never;
@@ -32,7 +72,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    hello_world: {
+    ping: {
         parameters: {
             query?: never;
             header?: never;
@@ -41,7 +81,55 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Hello message */
+            /** @description ping */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    create_lobby: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLobbyRequest"];
+            };
+        };
+        responses: {
+            /** @description Create lobby */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    join_lobby: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinLobbyRequest"];
+            };
+        };
+        responses: {
+            /** @description Join lobby */
             200: {
                 headers: {
                     [name: string]: unknown;

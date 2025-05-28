@@ -15,7 +15,14 @@ use lobby::lobby_manager::LobbyManager;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(ping),
+    paths(
+        ping,
+        lobby_controller::create_lobby,
+        lobby_controller::join_lobby
+    ),
+    components(
+        schemas(lobby_controller::CreateLobbyRequest, lobby_controller::JoinLobbyRequest)
+    ),
     info(
         title = "Wukong API",
         version = "0.1.0",
