@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Yappers API",
-    "description": "API for Yappers multiplayer party games",
+    "title": "Wukong API",
+    "description": "Yappers backend.",
     "license": {
       "name": ""
     },
@@ -12,10 +12,70 @@
     "/": {
       "get": {
         "tags": [],
-        "operationId": "hello_world",
+        "operationId": "ping",
         "responses": {
           "200": {
-            "description": "Hello message",
+            "description": "ping",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lobby/create": {
+      "post": {
+        "tags": [
+          "lobby_controller"
+        ],
+        "operationId": "create_lobby",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLobbyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Create lobby",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lobby/join": {
+      "post": {
+        "tags": [
+          "lobby_controller"
+        ],
+        "operationId": "join_lobby",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinLobbyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Join lobby",
             "content": {
               "text/plain": {
                 "schema": {
@@ -28,5 +88,34 @@
       }
     }
   },
-  "components": {}
+  "components": {
+    "schemas": {
+      "CreateLobbyRequest": {
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "properties": {
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "JoinLobbyRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "lobby_code"
+        ],
+        "properties": {
+          "lobby_code": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
 }
