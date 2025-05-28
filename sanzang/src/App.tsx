@@ -1,5 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
 
+interface Player {
+  id: string
+  username: string
+}
+
+interface LobbyInfo {
+  id: string
+  code: string
+  host_id: string
+  players: Player[]
+  max_players: number
+  created_at: string
+}
+
 function App() {
   const [username, setUsername] = useState('')
   const [joinUsername, setJoinUsername] = useState('')
@@ -9,7 +23,7 @@ function App() {
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState<string[]>([])
   const [connected, setConnected] = useState(false)
-  const [lobbyInfo, setLobbyInfo] = useState<any>(null)
+  const [lobbyInfo, setLobbyInfo] = useState<LobbyInfo | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
 
   const createLobby = async () => {
@@ -21,10 +35,10 @@ function App() {
         },
         body: JSON.stringify({ username }),
       })
-      const data = await response.json()
+      const data: LobbyInfo = await response.json()
       setLobbyId(data.id)
       setLobbyInfo(data)
-      const hostPlayer = data.players.find((p: any) => p.username === username)
+      const hostPlayer = data.players.find((p: Player) => p.username === username)
       setPlayerId(hostPlayer?.id || username)
     } catch (error) {
       console.error('Error creating lobby:', error)
@@ -43,10 +57,10 @@ function App() {
           lobby_code: joinLobbyCode 
         }),
       })
-      const data = await response.json()
+      const data: LobbyInfo = await response.json()
       setLobbyId(data.id)
       setLobbyInfo(data)
-      const joinedPlayer = data.players.find((p: any) => p.username === joinUsername)
+      const joinedPlayer = data.players.find((p: Player) => p.username === joinUsername)
       setPlayerId(joinedPlayer?.id || joinUsername)
     } catch (error) {
       console.error('Error joining lobby:', error)
@@ -64,7 +78,74 @@ function App() {
     }
 
     ws.onmessage = (event) => {
-      setMessages(prev => [...prev, event.data])
+      try {
+        const wsMessage = JSON.parse(event.data)
+        
+        // Check if it's a structured WebSocket message
+        if (wsMessage.message && wsMessage.message.type) {
+          switch (wsMessage.message.type) {
+            case 'PlayerJoined':
+              // Update lobby info by adding the new player
+              setLobbyInfo((prev: LobbyInfo | null) => {
+                if (!prev) return prev
+                
+                // Check if player already exists to avoid duplicates
+                const playerExists = prev.players.some((p: Player) => p.id === wsMessage.message.player_id)
+                if (playerExists) return prev
+                
+                return {
+                  ...prev,
+                  players: [
+                    ...prev.players,
+                    {
+                      id: wsMessage.message.player_id,
+                      username: wsMessage.message.username
+                    }
+                  ]
+                }
+              })
+              
+              // Add join message to chat
+              setMessages(prev => [...prev, `🎉 ${wsMessage.message.username} joined the lobby!`])
+              break
+              
+            case 'PlayerLeft':
+              // Update lobby info by removing the player
+              setLobbyInfo((prev: LobbyInfo | null) => {
+                if (!prev) return prev
+                
+                return {
+                  ...prev,
+                  players: prev.players.filter((p: Player) => p.id !== wsMessage.message.player_id)
+                }
+              })
+              
+              // Add leave message to chat
+              setMessages(prev => [...prev, `👋 ${wsMessage.message.username} left the lobby`])
+              break
+              
+            case 'ChatMessage':
+              // Add chat message
+              setMessages(prev => [...prev, `${wsMessage.message.username}: ${wsMessage.message.message}`])
+              break
+              
+            case 'GameStarted':
+              // Add game started message
+              setMessages(prev => [...prev, `🎮 Game started: ${wsMessage.message.game_type}`])
+              break
+              
+            default:
+              // Unknown message type, just display as text
+              setMessages(prev => [...prev, event.data])
+          }
+        } else {
+          // Not a structured message, treat as plain text
+          setMessages(prev => [...prev, event.data])
+        }
+      } catch (error) {
+        // Failed to parse JSON, treat as plain text message
+        setMessages(prev => [...prev, event.data])
+      }
     }
 
     ws.onclose = () => {
@@ -150,10 +231,10 @@ function App() {
             <p className="text-3xl font-bold text-blue-800 tracking-widest">{lobbyInfo.code}</p>
           </div>
           <p><strong>Lobby ID:</strong> {lobbyInfo.id}</p>
-          <p><strong>Host:</strong> {lobbyInfo.players.find((p: any) => p.id === lobbyInfo.host_id)?.username}</p>
+          <p><strong>Host:</strong> {lobbyInfo.players.find((p: Player) => p.id === lobbyInfo.host_id)?.username}</p>
           <p><strong>Players ({lobbyInfo.players.length}/{lobbyInfo.max_players}):</strong></p>
           <ul className="ml-4">
-            {lobbyInfo.players.map((player: any) => (
+            {lobbyInfo.players.map((player: Player) => (
               <li key={player.id} className="flex items-center gap-2">
                 <span>{player.username}</span>
                 {player.id === lobbyInfo.host_id && <span className="text-xs bg-blue-100 px-2 py-1 rounded">HOST</span>}

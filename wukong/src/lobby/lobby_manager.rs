@@ -4,6 +4,8 @@ use uuid::Uuid;
 use chrono;
 use serde::Serialize;
 use rand::{Rng, rng};
+use crate::lobby::messages::{LobbyMessage, WebSocketMessage};
+use serde_json;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Player {
@@ -141,25 +143,44 @@ impl LobbyManager {
         let player_id = Uuid::new_v4().to_string();
         let player = Player {
             id: player_id.clone(),
-            username: player_username,
+            username: player_username.clone(),
         };
 
-        let mut lobbies = self.lobbies.write().await;
-        let mut player_to_lobby = self.player_to_lobby.write().await;
+        let updated_lobby = {
+            let mut lobbies = self.lobbies.write().await;
+            let mut player_to_lobby = self.player_to_lobby.write().await;
 
-        if player_to_lobby.contains_key(&player_id) {
-            return Err(LobbyError::PlayerAlreadyInLobby);
+            if player_to_lobby.contains_key(&player_id) {
+                return Err(LobbyError::PlayerAlreadyInLobby);
+            }
+
+            let lobby = lobbies.get_mut(&lobby_id).ok_or(LobbyError::LobbyNotFound)?;
+            if lobby.players.len() >= lobby.max_players as usize {
+                return Err(LobbyError::LobbyFull);
+            }
+
+            lobby.players.push(player);
+            player_to_lobby.insert(player_id.clone(), lobby_id.clone());
+            
+            lobby.clone()
+        };
+
+        let player_joined = LobbyMessage::PlayerJoined {
+            username: player_username,
+            player_id: player_id,
+        };
+        let ws_message = WebSocketMessage {
+            lobby_id: lobby_id.clone(),
+            message: player_joined,
+        };
+
+        if let Ok(message_json) = serde_json::to_string(&ws_message) {
+            if let Err(e) = self.broadcast_to_lobby(&lobby_id, message_json).await {
+                println!("Failed to broadcast player joined message: {}", e);
+            }
         }
 
-        let lobby = lobbies.get_mut(&lobby_id).ok_or(LobbyError::LobbyNotFound)?;
-        if lobby.players.len() >= lobby.max_players as usize {
-            return Err(LobbyError::LobbyFull);
-        }
-
-        lobby.players.push(player);
-        player_to_lobby.insert(player_id, lobby_id);
-        
-        Ok(lobby.clone())
+        Ok(updated_lobby)
     }
 
     pub async fn get_broadcaster(&self, lobby_id: &str) -> LobbyResult<broadcast::Sender<String>> {
