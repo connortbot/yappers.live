@@ -1,8 +1,8 @@
 use axum::{
     routing::{post},
     Router,
-    Json,
     extract::State,
+    Json,
 };
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -17,7 +17,7 @@ pub struct CreateLobbyRequest {
 #[derive(Deserialize, ToSchema)]
 pub struct JoinLobbyRequest {
     pub username: String,
-    pub lobby_id: String,
+    pub lobby_code: String,
 }
 
 #[utoipa::path(
@@ -58,7 +58,7 @@ pub async fn join_lobby(
     Json(payload): Json<JoinLobbyRequest>
 ) -> Result<Json<Lobby>, String> {
     println!("[POST: /lobby/join]");
-    match lobby_manager.join_lobby(payload.username, payload.lobby_id).await {
+    match lobby_manager.join_lobby_by_code(payload.username, payload.lobby_code).await {
         Ok(lobby) => {
             println!("[POST: /lobby/join]");
             Ok(Json(lobby))

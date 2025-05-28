@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 function App() {
   const [username, setUsername] = useState('')
   const [joinUsername, setJoinUsername] = useState('')
-  const [joinLobbyId, setJoinLobbyId] = useState('')
+  const [joinLobbyCode, setJoinLobbyCode] = useState('')
   const [lobbyId, setLobbyId] = useState('')
   const [playerId, setPlayerId] = useState('')
   const [message, setMessage] = useState('')
@@ -40,7 +40,7 @@ function App() {
         },
         body: JSON.stringify({ 
           username: joinUsername, 
-          lobby_id: joinLobbyId 
+          lobby_code: joinLobbyCode 
         }),
       })
       const data = await response.json()
@@ -79,6 +79,8 @@ function App() {
     if (wsRef.current) {
       wsRef.current.close()
       wsRef.current = null
+      setConnected(false)
+      setMessages([])
     }
   }
 
@@ -125,10 +127,11 @@ function App() {
           />
           <input
             type="text"
-            value={joinLobbyId}
-            onChange={(e) => setJoinLobbyId(e.target.value)}
-            placeholder="Enter lobby ID"
-            className="border rounded px-2 py-1 flex-1"
+            value={joinLobbyCode}
+            onChange={(e) => setJoinLobbyCode(e.target.value.toUpperCase())}
+            placeholder="Enter 6-digit code (e.g. ABC123)"
+            maxLength={6}
+            className="border rounded px-2 py-1 flex-1 font-mono tracking-widest text-center"
           />
           <button
             onClick={joinLobby}
@@ -142,6 +145,10 @@ function App() {
       {lobbyInfo && (
         <div className="mb-8 p-4 border rounded-lg bg-gray-50">
           <h2 className="text-xl font-semibold mb-4">Lobby Info</h2>
+          <div className="mb-4 p-3 bg-blue-100 rounded-lg border-2 border-blue-300">
+            <p className="text-sm text-blue-700 mb-1">Share this code with friends:</p>
+            <p className="text-3xl font-bold text-blue-800 tracking-widest">{lobbyInfo.code}</p>
+          </div>
           <p><strong>Lobby ID:</strong> {lobbyInfo.id}</p>
           <p><strong>Host:</strong> {lobbyInfo.players.find((p: any) => p.id === lobbyInfo.host_id)?.username}</p>
           <p><strong>Players ({lobbyInfo.players.length}/{lobbyInfo.max_players}):</strong></p>
