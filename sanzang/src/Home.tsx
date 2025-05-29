@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
+import { Button } from './components/Button'
 
 interface Player {
   id: string
@@ -14,7 +15,7 @@ interface LobbyInfo {
   created_at: string
 }
 
-function App() {
+export default function Home() {
   const [username, setUsername] = useState('')
   const [joinUsername, setJoinUsername] = useState('')
   const [joinLobbyCode, setJoinLobbyCode] = useState('')
@@ -174,37 +175,39 @@ function App() {
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
-      <h1 className="text-3xl font-bold mb-8">Yappers Websocket Test</h1>
+      <h1 className="text-6xl font-bold mb-8 font-primary">yappers.live</h1>
       
       {/* Lobby Creation */}
-      <div className="mb-8 p-4 border rounded-lg">
-        <h2 className="text-xl font-semibold mb-4">Create Lobby</h2>
+      <div className="mb-8 p-4 border-2 border-pencil rounded-lg">
+        <h2 className="text-3xl font-semibold mb-4 font-primary">Create Lobby</h2>
         <div className="flex gap-2">
           <input
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Enter username"
-            className="border rounded px-2 py-1 flex-1"
+            className="border-2 border-pencil text-pencil font-secondary rounded px-2 py-1 flex-1"
           />
-          <button
-            onClick={createLobby}
-            className="bg-blue-500 text-white px-4 py-1 rounded hover:bg-blue-600"
+          <Button
+            variant="secondary"
+            size="medium"
+            onMouseUp={createLobby}
           >
             Create Lobby
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="mb-8 p-4 border rounded-lg">
-        <h2 className="text-xl font-semibold mb-4">Join Existing Lobby</h2>
+      {/* Join Lobby */}
+      <div className="mb-8 p-4 border-2 border-pencil rounded-lg">
+        <h2 className="text-3xl font-semibold mb-4 font-primary">Join Existing Lobby</h2>
         <div className="flex gap-2 mb-2">
           <input
             type="text"
             value={joinUsername}
             onChange={(e) => setJoinUsername(e.target.value)}
             placeholder="Enter username"
-            className="border rounded px-2 py-1 flex-1"
+            className="border-2 border-pencil text-pencil font-secondary rounded px-2 py-1 flex-1"
           />
           <input
             type="text"
@@ -212,33 +215,34 @@ function App() {
             onChange={(e) => setJoinLobbyCode(e.target.value.toUpperCase())}
             placeholder="Enter 6-digit code (e.g. ABC123)"
             maxLength={6}
-            className="border rounded px-2 py-1 flex-1 font-mono tracking-widest text-center"
+            className="border-2 border-pencil text-pencil font-secondary rounded px-2 py-1 flex-1 font-mono tracking-widest text-center"
           />
-          <button
-            onClick={joinLobby}
-            className="bg-green-500 text-white px-4 py-1 rounded hover:bg-green-600"
+          <Button
+            variant="secondary"
+            size="medium"
+            onMouseUp={joinLobby}
           >
             Join Lobby
-          </button>
+          </Button>
         </div>
       </div>
 
       {lobbyInfo && (
-        <div className="mb-8 p-4 border rounded-lg bg-gray-50">
-          <h2 className="text-xl font-semibold mb-4">Lobby Info</h2>
-          <div className="mb-4 p-3 bg-blue-100 rounded-lg border-2 border-blue-300">
-            <p className="text-sm text-blue-700 mb-1">Share this code with friends:</p>
-            <p className="text-3xl font-bold text-blue-800 tracking-widest">{lobbyInfo.code}</p>
+        <div className="mb-8 p-4 border-2 border-pencil rounded-lg">
+          <h2 className="text-3xl font-semibold mb-4 font-primary">Lobby Info</h2>
+          <div className="mb-4 p-3 bg-blue-100 rounded-lg border-2 border-pencil">
+            <p className="text-sm text-pencil mb-1 font-secondary">Share this code with friends:</p>
+            <p className="text-3xl font-bold text-pencil tracking-widest font-primary">{lobbyInfo.code}</p>
           </div>
-          <p><strong>Lobby ID:</strong> {lobbyInfo.id}</p>
-          <p><strong>Host:</strong> {lobbyInfo.players.find((p: Player) => p.id === lobbyInfo.host_id)?.username}</p>
-          <p><strong>Players ({lobbyInfo.players.length}/{lobbyInfo.max_players}):</strong></p>
+          <p className="font-secondary text-pencil"><strong>Lobby ID:</strong> {lobbyInfo.id}</p>
+          <p className="font-secondary text-pencil"><strong>Host:</strong> {lobbyInfo.players.find((p: Player) => p.id === lobbyInfo.host_id)?.username}</p>
+          <p className="font-secondary text-pencil"><strong>Players ({lobbyInfo.players.length}/{lobbyInfo.max_players}):</strong></p>
           <ul className="ml-4">
             {lobbyInfo.players.map((player: Player) => (
-              <li key={player.id} className="flex items-center gap-2">
+              <li key={player.id} className="flex items-center gap-2 font-secondary text-pencil">
                 <span>{player.username}</span>
-                {player.id === lobbyInfo.host_id && <span className="text-xs bg-blue-100 px-2 py-1 rounded">HOST</span>}
-                {player.id === playerId && <span className="text-xs bg-green-100 px-2 py-1 rounded">YOU</span>}
+                {player.id === lobbyInfo.host_id && <span className="text-xs border-2 border-pencil px-2 py-1 rounded">HOST</span>}
+                {player.id === playerId && <span className="text-xs border-2 border-pencil px-2 py-1 rounded">YOU</span>}
               </li>
             ))}
           </ul>
@@ -246,31 +250,29 @@ function App() {
       )}
 
       {/* Websocket Connection */}
-      <div className="mb-8 p-4 border rounded-lg">
-        <h2 className="text-xl font-semibold mb-4">Websocket Connection</h2>
+      <div className="mb-8 p-4 border-2 border-pencil rounded-lg">
+        <h2 className="text-3xl font-semibold mb-4 font-primary">Websocket Connection</h2>
         <div className="flex gap-2">
-          <button
-            onClick={connectWebSocket}
+          <Button
+            variant="primary"
+            size="medium"
             disabled={!lobbyId || !playerId || connected}
-            className={`px-4 py-1 rounded ${
-              connected
-                ? 'bg-green-500'
-                : 'bg-blue-500 hover:bg-blue-600'
-            } text-white disabled:bg-gray-400`}
+            onMouseUp={connectWebSocket}
           >
             {connected ? 'Connected' : 'Connect to Websocket'}
-          </button>
+          </Button>
           {connected && (
-            <button
-              onClick={disconnect}
-              className="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600"
+            <Button
+              variant="secondary"
+              size="medium"
+              onMouseUp={disconnect}
             >
               Disconnect
-            </button>
+            </Button>
           )}
         </div>
         {lobbyId && playerId && (
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-2 text-sm text-pencil font-secondary">
             Ready to connect to lobby {lobbyId} as player {playerId}
           </p>
         )}
@@ -278,11 +280,11 @@ function App() {
 
       {/* Chat */}
       {connected && (
-        <div className="p-4 border rounded-lg">
-          <h2 className="text-xl font-semibold mb-4">Chat</h2>
-          <div className="mb-4 h-48 overflow-y-auto border rounded p-2 bg-gray-50">
+        <div className="p-4 border-2 border-pencil rounded-lg">
+          <h2 className="text-3xl font-semibold mb-4 font-primary">Chat</h2>
+          <div className="mb-4 h-48 overflow-y-auto border-2 border-pencil rounded p-2">
             {messages.map((msg, index) => (
-              <div key={index} className="mb-1">
+              <div key={index} className="mb-1 font-secondary text-pencil">
                 {msg}
               </div>
             ))}
@@ -293,20 +295,19 @@ function App() {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Type a message"
-              className="border rounded px-2 py-1 flex-1"
+              className="border-2 border-pencil text-pencil font-secondary rounded px-2 py-1 flex-1"
               onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
             />
-            <button
-              onClick={sendMessage}
-              className="bg-blue-500 text-white px-4 py-1 rounded hover:bg-blue-600"
+            <Button
+              variant="secondary"
+              size="medium"
+              onMouseUp={sendMessage}
             >
               Send
-            </button>
+            </Button>
           </div>
         </div>
       )}
     </div>
   )
-}
-
-export default App
+} 
