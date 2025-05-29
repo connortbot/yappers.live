@@ -86,6 +86,26 @@
           }
         }
       }
+    },
+    "/ws/{lobby_id}/{player_id}": {
+      "get": {
+        "tags": [
+          "websocket_controller"
+        ],
+        "operationId": "websocket_handler",
+        "responses": {
+          "200": {
+            "description": "Websocket connection",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
