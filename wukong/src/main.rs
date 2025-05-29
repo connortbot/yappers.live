@@ -18,7 +18,8 @@ use lobby::lobby_manager::LobbyManager;
     paths(
         ping,
         lobby_controller::create_lobby,
-        lobby_controller::join_lobby
+        lobby_controller::join_lobby,
+        websocket_controller::websocket_handler,
     ),
     components(
         schemas(lobby_controller::CreateLobbyRequest, lobby_controller::JoinLobbyRequest)

@@ -9,6 +9,13 @@ use axum::extract::ws::{WebSocket, Message};
 use futures::{StreamExt, SinkExt};
 use crate::lobby::lobby_manager::LobbyManager;
 
+#[utoipa::path(
+    get,
+    path = "/ws/{lobby_id}/{player_id}",
+    responses(
+        (status = 200, description = "Websocket connection", body = String)
+    )
+)]
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
     Path((lobby_id, player_id)): Path<(String, String)>,
