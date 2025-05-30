@@ -34,7 +34,7 @@ pub type GameResult<T> = Result<T, ErrorResponse>;
 
 #[derive(Default)]
 pub struct GameManager {
-    lobbies: RwLock<HashMap<String, Game>>,
+    games: RwLock<HashMap<String, Game>>,
     player_to_game: RwLock<HashMap<String, String>>,
     game_broadcasters: RwLock<HashMap<String, broadcast::Sender<String>>>,
     code_to_game: RwLock<HashMap<String, String>>,
@@ -90,7 +90,7 @@ impl GameManager {
             created_at: chrono::Utc::now().timestamp() as i32,
         };
 
-        let mut lobbies = self.lobbies.write().await;
+        let mut games = self.games.write().await;
         let mut player_to_game = self.player_to_game.write().await;
         let mut game_broadcasters = self.game_broadcasters.write().await;
         let mut code_to_game = self.code_to_game.write().await;
@@ -105,7 +105,7 @@ impl GameManager {
         let (tx, _) = broadcast::channel(100);
         game_broadcasters.insert(game_id.clone(), tx);
 
-        lobbies.insert(game_id.clone(), game.clone());
+        games.insert(game_id.clone(), game.clone());
         player_to_game.insert(host_id, game_id.clone());
         code_to_game.insert(game_code, game_id);
 
@@ -148,7 +148,7 @@ impl GameManager {
         };
 
         let updated_game = {
-            let mut lobbies = self.lobbies.write().await;
+            let mut games = self.games.write().await;
             let mut player_to_game = self.player_to_game.write().await;
 
             if player_to_game.contains_key(&player_id) {
@@ -158,7 +158,7 @@ impl GameManager {
                 });
             }
 
-            let game = lobbies.get_mut(&game_id).ok_or(ErrorResponse{
+            let game = games.get_mut(&game_id).ok_or(ErrorResponse{
                 error: ErrorCode::GameNotFound,
                 message: "Game not found".to_string(),
             })?;
@@ -208,5 +208,108 @@ impl GameManager {
         let broadcaster = self.get_broadcaster(game_id).await?;
         let _ = broadcaster.send(message);
         Ok(())
+    }
+
+    pub async fn remove_player_from_game(&self, player_id: &str) -> GameResult<()> {
+        let game_id = {
+            let player_to_game = self.player_to_game.read().await;
+            player_to_game.get(player_id).cloned()
+        };
+
+        if let Some(game_id) = game_id {
+            let (should_cleanup_game, player_info) = {
+                let mut games = self.games.write().await;
+                let mut player_to_game = self.player_to_game.write().await;
+
+                if let Some(game) = games.get_mut(&game_id) {
+                    let player_info = game.players.iter()
+                        .find(|p| p.id == player_id)
+                        .map(|p| (p.username.clone(), p.id.clone()));
+                    game.players.retain(|p| p.id != player_id);
+                    player_to_game.remove(player_id);
+
+                    let should_cleanup = game.players.is_empty();
+                    (should_cleanup, player_info)
+                } else {
+                    (false, None)
+                }
+            };
+
+            if let Some((username, player_id)) = player_info {
+                let player_disconnected = GameMessage::PlayerDisconnected {
+                    username: username.clone(),
+                    player_id: player_id.clone(),
+                };
+                let ws_message = WebSocketMessage {
+                    game_id: game_id.clone(),
+                    message: player_disconnected,
+                };
+
+                if let Ok(message_json) = serde_json::to_string(&ws_message) {
+                    let _ = self.broadcast_to_game(&game_id, message_json).await;
+                }
+            }
+
+            if should_cleanup_game {
+                self.cleanup_empty_game(&game_id).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn cleanup_empty_game(&self, game_id: &str) -> GameResult<()> {
+        let mut games = self.games.write().await;
+        let mut game_broadcasters = self.game_broadcasters.write().await;
+        let mut code_to_game = self.code_to_game.write().await;
+
+        let game_code = games.get(game_id).map(|g| g.code.clone());
+
+        games.remove(game_id);
+        game_broadcasters.remove(game_id);
+        
+        if let Some(code) = game_code {
+            code_to_game.remove(&code);
+        }
+
+        println!("[GameManager] Cleaned up empty game: {}", game_id);
+        Ok(())
+    }
+
+    // we just rebroadcast as a chat message, since we assume the client will disconnect, which triggers other code.
+    pub async fn handle_player_left(&self, game_id: &str, player_id: &str) -> GameResult<()> {
+        let player_info = {
+            let games = self.games.read().await;
+            games.get(game_id)
+                .and_then(|game| game.players.iter().find(|p| p.id == player_id))
+                .map(|p| p.username.clone())
+        };
+
+        if let Some(username) = player_info {
+            let chat_message = GameMessage::ChatMessage {
+                username: "System".to_string(),
+                message: format!("{} left the game", username),
+            };
+            let ws_message = WebSocketMessage {
+                game_id: game_id.to_string(),
+                message: chat_message,
+            };
+
+            if let Ok(message_json) = serde_json::to_string(&ws_message) {
+                let _ = self.broadcast_to_game(game_id, message_json).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_all_games(&self) -> GameResult<Vec<Game>> {
+        let games = self.games.read().await;
+        Ok(games.values().cloned().collect())
+    }
+    
+    pub async fn get_game(&self, game_id: &str) -> GameResult<Option<Game>> {
+        let games = self.games.read().await;
+        Ok(games.get(game_id).cloned())
     }
 }

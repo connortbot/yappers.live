@@ -7,6 +7,7 @@ use ts_rs::TS;
 pub enum GameMessage {
     PlayerJoined { username: String, player_id: String },
     PlayerLeft { username: String, player_id: String },
+    PlayerDisconnected { username: String, player_id: String },
     GameStarted { game_type: String },
     ChatMessage { username: String, message: String },
 }

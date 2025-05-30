@@ -9,6 +9,7 @@ use tower_http::cors::{CorsLayer, Any};
 use std::sync::Arc;
 mod game_controller;
 mod websocket_controller;
+mod admin;
 mod error;
 use error::ErrorResponse;
 
@@ -22,6 +23,8 @@ use game::game_manager::GameManager;
         game_controller::create_game,
         game_controller::join_game,
         websocket_controller::websocket_handler,
+        admin::list_games,
+        admin::get_game,
     ),
     components(
         schemas(game_controller::CreateGameRequest, game_controller::JoinGameRequest)
@@ -59,7 +62,8 @@ async fn main() {
     let app = Router::new()
         .route("/", get(ping))
         .merge(websocket_controller::routes(game_manager.clone()))
-        .merge(game_controller::routes(game_manager))
+        .merge(game_controller::routes(game_manager.clone()))
+        .merge(admin::routes(game_manager))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(cors);
 

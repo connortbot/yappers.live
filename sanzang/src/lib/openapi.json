@@ -37,6 +37,87 @@
         }
       }
     },
+    "/admin/game": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "get_game",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Game ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Game details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDetailsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/games": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "list_games",
+        "responses": {
+          "200": {
+            "description": "List of games",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GamesListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/game/create": {
       "post": {
         "tags": [
@@ -267,6 +348,36 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Player"
+            }
+          }
+        }
+      },
+      "GameDetailsResponse": {
+        "type": "object",
+        "required": [
+          "game"
+        ],
+        "properties": {
+          "game": {
+            "$ref": "#/components/schemas/Game"
+          }
+        }
+      },
+      "GamesListResponse": {
+        "type": "object",
+        "required": [
+          "count",
+          "game_ids"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "game_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }

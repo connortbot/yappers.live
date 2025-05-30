@@ -9,6 +9,7 @@ use axum::extract::ws::{WebSocket, Message};
 use futures::{StreamExt, SinkExt};
 use crate::game::game_manager::GameManager;
 use crate::game::messages::WebSocketMessage;
+use crate::game::messages::GameMessage::PlayerLeft;
 
 #[utoipa::path(
     get,
@@ -68,15 +69,24 @@ async fn handle_socket(
                                     continue;
                                 }
                                 
-                                match serde_json::to_string(&ws_message) {
-                                    Ok(message_json) => {
-                                        if let Err(e) = game_manager.broadcast_to_game(&game_id, message_json).await {
-                                            println!("[WS] Error broadcasting message: {}", e);
-                                            break;
+                                match &ws_message.message {
+                                    PlayerLeft { player_id, .. } => {
+                                        if let Err(e) = game_manager.handle_player_left(&game_id, player_id).await {
+                                            println!("[WS] Error handling player left: {}", e);
                                         }
                                     }
-                                    Err(e) => {
-                                        println!("[WS:: Error serializing message: {}]", e);
+                                    _ => {
+                                        match serde_json::to_string(&ws_message) {
+                                            Ok(message_json) => {
+                                                if let Err(e) = game_manager.broadcast_to_game(&game_id, message_json).await {
+                                                    println!("[WS] Error broadcasting message: {}", e);
+                                                    break;
+                                                }
+                                            }
+                                            Err(e) => {
+                                                println!("[WS:: Error serializing message: {}]", e);
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -105,6 +115,9 @@ async fn handle_socket(
     }
 
     println!("[WS:: Player {} disconnected from game {}]", player_id, game_id);
+    if let Err(e) = game_manager.remove_player_from_game(&player_id).await {
+        println!("[WS:: Error removing player on disconnect: {}]", e);
+    }
 }
 
 pub fn routes(game_manager: Arc<GameManager>) -> Router {

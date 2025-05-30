@@ -19,14 +19,12 @@ export default function Lobby() {
     playerId,
     username,
     connected,
-    connecting,
     messages,
     loading,
     error,
     createGame,
     joinGame,
     connectWebSocket,
-    disconnect,
     sendMessage,
     clearError,
     leaveGame
@@ -38,15 +36,35 @@ export default function Lobby() {
 
   const handleCreateGame = async () => {
     await createGame(localUsername)
+    setTimeout(() => {
+      connectWebSocket()
+    }, 100)
   }
 
   const handleJoinGame = async () => {
     await joinGame(joinUsername, joinGameCode)
+    setTimeout(() => {
+      connectWebSocket()
+    }, 100)
   }
 
   const handleLeaveGame = () => {
-    leaveGame()
-    navigate('/')
+    if (game?.id && username) {
+      const playerLeftMessage = {
+        game_id: game.id,
+        message: {
+          type: 'PlayerLeft' as const,
+          username: username,
+          player_id: playerId || ''
+        }
+      }
+      sendMessage(playerLeftMessage)
+    }
+    
+    setTimeout(() => {
+      leaveGame()
+      navigate('/')
+    }, 100)
   }
 
   const handleBackToHome = () => {
@@ -168,38 +186,6 @@ export default function Lobby() {
             currentPlayerId={playerId || ''}
             maxPlayers={game.max_players}
           />
-        </Section>
-      )}
-
-      {/* Websocket Connection */}
-      {game && (
-        <Section title="Websocket Connection">
-          <FormRow>
-            <Button
-              variant="primary"
-              size="medium"
-              disabled={!game.id || !playerId || connected || connecting}
-              onMouseUp={connectWebSocket}
-              className="w-full sm:flex-1"
-            >
-              {connecting ? 'Connecting...' : connected ? 'Connected' : 'Connect to Websocket'}
-            </Button>
-            {connected && (
-              <Button
-                variant="secondary"
-                size="medium"
-                onMouseUp={disconnect}
-                className="w-full sm:w-auto"
-              >
-                Disconnect
-              </Button>
-            )}
-          </FormRow>
-          {game.id && playerId && (
-            <p className="mt-2 text-xs sm:text-sm text-pencil font-secondary break-words">
-              Ready to connect to game {game.id} as player {playerId}
-            </p>
-          )}
         </Section>
       )}
 

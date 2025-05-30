@@ -168,6 +168,19 @@ export function GameProvider({ children }: GameProviderProps) {
         
         setMessages(prev => [...prev, `👋 ${message.username} left the game`])
         break
+
+      case 'PlayerDisconnected':
+        setGame((prev: Game | null) => {
+          if (!prev) return prev
+          
+          return {
+            ...prev,
+            players: prev.players.filter((p: Player) => p.id !== message.player_id)
+          }
+        })
+        
+        setMessages(prev => [...prev, `🔌 ${message.username} disconnected`])
+        break
         
       case 'ChatMessage':
         setMessages(prev => [...prev, `${message.username}: ${message.message}`])
