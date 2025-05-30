@@ -4,7 +4,7 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(tag = "type")]
-pub enum LobbyMessage {
+pub enum GameMessage {
     PlayerJoined { username: String, player_id: String },
     PlayerLeft { username: String, player_id: String },
     GameStarted { game_type: String },
@@ -14,6 +14,6 @@ pub enum LobbyMessage {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct WebSocketMessage {
-    pub lobby_id: String,
-    pub message: LobbyMessage,
+    pub game_id: String,
+    pub message: GameMessage,
 }

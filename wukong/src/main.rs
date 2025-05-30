@@ -7,22 +7,24 @@ use utoipa_swagger_ui::SwaggerUi;
 use tower_http::cors::{CorsLayer, Any};
 
 use std::sync::Arc;
-mod lobby_controller;
+mod game_controller;
 mod websocket_controller;
+mod error;
+use error::ErrorResponse;
 
-mod lobby;
-use lobby::lobby_manager::LobbyManager;
+mod game;
+use game::game_manager::GameManager;
 
 #[derive(OpenApi)]
 #[openapi(
     paths(
         ping,
-        lobby_controller::create_lobby,
-        lobby_controller::join_lobby,
+        game_controller::create_game,
+        game_controller::join_game,
         websocket_controller::websocket_handler,
     ),
     components(
-        schemas(lobby_controller::CreateLobbyRequest, lobby_controller::JoinLobbyRequest)
+        schemas(game_controller::CreateGameRequest, game_controller::JoinGameRequest)
     ),
     info(
         title = "Wukong API",
@@ -37,7 +39,8 @@ struct ApiDoc;
     get,
     path = "/",
     responses(
-        (status = 200, description = "ping", body = String)
+        (status = 200, description = "ping", body = String),
+        (status = 400, description = "Bad Request", body = ErrorResponse)
     )
 )]
 async fn ping() -> &'static str {
@@ -46,7 +49,7 @@ async fn ping() -> &'static str {
 
 #[tokio::main]
 async fn main() {
-    let lobby_manager = Arc::new(LobbyManager::new());
+    let game_manager = Arc::new(GameManager::new());
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -55,8 +58,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(ping))
-        .merge(websocket_controller::routes(lobby_manager.clone()))
-        .merge(lobby_controller::routes(lobby_manager))
+        .merge(websocket_controller::routes(game_manager.clone()))
+        .merge(game_controller::routes(game_manager))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(cors);
 

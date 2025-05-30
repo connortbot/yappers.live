@@ -23,33 +23,13 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/lobby/create": {
-      "post": {
-        "tags": [
-          "lobby_controller"
-        ],
-        "operationId": "create_lobby",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateLobbyRequest"
-              }
-            }
           },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Create lobby",
+          "400": {
+            "description": "Bad Request",
             "content": {
-              "text/plain": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -57,17 +37,17 @@
         }
       }
     },
-    "/lobby/join": {
+    "/game/create": {
       "post": {
         "tags": [
-          "lobby_controller"
+          "game_controller"
         ],
-        "operationId": "join_lobby",
+        "operationId": "create_game",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/JoinLobbyRequest"
+                "$ref": "#/components/schemas/CreateGameRequest"
               }
             }
           },
@@ -75,11 +55,21 @@
         },
         "responses": {
           "200": {
-            "description": "Join lobby",
+            "description": "Create game",
             "content": {
-              "text/plain": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/CreateGameResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -87,7 +77,47 @@
         }
       }
     },
-    "/ws/{lobby_id}/{player_id}": {
+    "/game/join": {
+      "post": {
+        "tags": [
+          "game_controller"
+        ],
+        "operationId": "join_game",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinGameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Join game",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinGameResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ws/{game_id}/{player_id}": {
       "get": {
         "tags": [
           "websocket_controller"
@@ -110,7 +140,7 @@
   },
   "components": {
     "schemas": {
-      "CreateLobbyRequest": {
+      "CreateGameRequest": {
         "type": "object",
         "required": [
           "username"
@@ -121,14 +151,160 @@
           }
         }
       },
-      "JoinLobbyRequest": {
+      "CreateGameResponse": {
+        "type": "object",
+        "required": [
+          "game"
+        ],
+        "properties": {
+          "game": {
+            "$ref": "#/components/schemas/Game"
+          }
+        }
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "GameNotFound"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "GameFull"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "PlayerNotFound"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "PlayerAlreadyExists"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "InvalidGameCode"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "PlayerAlreadyInGame"
+            ]
+          },
+          {
+            "type": "object",
+            "required": [
+              "InvalidInput"
+            ],
+            "properties": {
+              "InvalidInput": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "string",
+            "enum": [
+              "InternalServerError"
+            ]
+          }
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "Game": {
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "host_id",
+          "players",
+          "max_players",
+          "created_at"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "max_players": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "players": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Player"
+            }
+          }
+        }
+      },
+      "JoinGameRequest": {
         "type": "object",
         "required": [
           "username",
-          "lobby_code"
+          "game_code"
         ],
         "properties": {
-          "lobby_code": {
+          "game_code": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "JoinGameResponse": {
+        "type": "object",
+        "required": [
+          "game"
+        ],
+        "properties": {
+          "game": {
+            "$ref": "#/components/schemas/Game"
+          }
+        }
+      },
+      "Player": {
+        "type": "object",
+        "required": [
+          "id",
+          "username"
+        ],
+        "properties": {
+          "id": {
             "type": "string"
           },
           "username": {
