@@ -182,7 +182,7 @@ export default function TeamDraft() {
       {renderDraftSection()}
 
       {connected && (
-        <div className="flex gap-2 sm:gap-3 flex-col sm:flex-row">
+        <>
           <Section title="Chat" className="flex-1">
             <ChatBox 
               messages={messages}
@@ -198,7 +198,7 @@ export default function TeamDraft() {
               maxPlayers={game.max_players}
             />
           </Section>
-        </div>
+        </>
       )}
     </Screen>
   )
