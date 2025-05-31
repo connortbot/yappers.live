@@ -7,6 +7,7 @@ npx openapi-typescript http://127.0.0.1:8080/api-docs/openapi.json -o ../sanzang
 
 # GENERATE WEBSOCKET TYPES
 cd ../wukong
-cargo test export_bindings
+rm -rf bindings
 rm -rf ../sanzang/src/lib/bindings
+cargo test export_bindings
 cp -r bindings ../sanzang/src/lib/bindings

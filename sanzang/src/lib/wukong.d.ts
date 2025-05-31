@@ -20,7 +20,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/lobby/create": {
+    "/admin/game": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_game"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/games": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_games"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/game/create": {
         parameters: {
             query?: never;
             header?: never;
@@ -29,14 +61,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["create_lobby"];
+        post: operations["create_game"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/lobby/join": {
+    "/game/join": {
         parameters: {
             query?: never;
             header?: never;
@@ -45,14 +77,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["join_lobby"];
+        post: operations["join_game"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/ws/{lobby_id}/{player_id}": {
+    "/ws/{game_id}/{player_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -72,11 +104,45 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        CreateLobbyRequest: {
+        CreateGameRequest: {
             username: string;
         };
-        JoinLobbyRequest: {
-            lobby_code: string;
+        CreateGameResponse: {
+            game: components["schemas"]["Game"];
+        };
+        ErrorCode: "GameNotFound" | "GameFull" | "PlayerNotFound" | "PlayerAlreadyExists" | "InvalidGameCode" | "PlayerAlreadyInGame" | {
+            InvalidInput: string;
+        } | "InternalServerError";
+        ErrorResponse: {
+            error: components["schemas"]["ErrorCode"];
+            message: string;
+        };
+        Game: {
+            code: string;
+            /** Format: int32 */
+            created_at: number;
+            host_id: string;
+            id: string;
+            /** Format: int32 */
+            max_players: number;
+            players: components["schemas"]["Player"][];
+        };
+        GameDetailsResponse: {
+            game: components["schemas"]["Game"];
+        };
+        GamesListResponse: {
+            count: number;
+            game_ids: string[];
+        };
+        JoinGameRequest: {
+            game_code: string;
+            username: string;
+        };
+        JoinGameResponse: {
+            game: components["schemas"]["Game"];
+        };
+        Player: {
+            id: string;
             username: string;
         };
     };
@@ -106,9 +172,88 @@ export interface operations {
                     "text/plain": string;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    create_lobby: {
+    get_game: {
+        parameters: {
+            query: {
+                /** @description Game ID */
+                id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Game details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameDetailsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_games: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of games */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GamesListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_game: {
         parameters: {
             query?: never;
             header?: never;
@@ -117,22 +262,31 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateLobbyRequest"];
+                "application/json": components["schemas"]["CreateGameRequest"];
             };
         };
         responses: {
-            /** @description Create lobby */
+            /** @description Create game */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/plain": string;
+                    "application/json": components["schemas"]["CreateGameResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    join_lobby: {
+    join_game: {
         parameters: {
             query?: never;
             header?: never;
@@ -141,17 +295,26 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["JoinLobbyRequest"];
+                "application/json": components["schemas"]["JoinGameRequest"];
             };
         };
         responses: {
-            /** @description Join lobby */
+            /** @description Join game */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/plain": string;
+                    "application/json": components["schemas"]["JoinGameResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

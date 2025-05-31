@@ -7,32 +7,34 @@ use axum::{
 };
 use axum::extract::ws::{WebSocket, Message};
 use futures::{StreamExt, SinkExt};
-use crate::lobby::lobby_manager::LobbyManager;
+use crate::game::game_manager::GameManager;
+use crate::game::messages::WebSocketMessage;
+use crate::game::messages::GameMessage::PlayerLeft;
 
 #[utoipa::path(
     get,
-    path = "/ws/{lobby_id}/{player_id}",
+    path = "/ws/{game_id}/{player_id}",
     responses(
         (status = 200, description = "Websocket connection", body = String)
     )
 )]
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
-    Path((lobby_id, player_id)): Path<(String, String)>,
-    State(lobby_manager): State<Arc<LobbyManager>>,
+    Path((game_id, player_id)): Path<(String, String)>,
+    State(game_manager): State<Arc<GameManager>>,
 ) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, lobby_id, player_id, lobby_manager))
+    ws.on_upgrade(move |socket| handle_socket(socket, game_id, player_id, game_manager))
 }
 
 async fn handle_socket(
     socket: WebSocket,
-    lobby_id: String,
+    game_id: String,
     player_id: String,
-    lobby_manager: Arc<LobbyManager>,
+    game_manager: Arc<GameManager>,
 ) {
-    println!("[WS:: Player {} connected to lobby {}]", player_id, lobby_id);
+    println!("[WS:: Player {} connected to game {}]", player_id, game_id);
 
-    let broadcaster = match lobby_manager.get_broadcaster(&lobby_id).await {
+    let broadcaster = match game_manager.get_broadcaster(&game_id).await {
         Ok(tx) => tx,
         Err(e) => {
             println!("[WS:: Error getting broadcaster: {}]", e);
@@ -44,29 +46,53 @@ async fn handle_socket(
     let mut broadcast_rx = broadcaster.subscribe();
 
     let send_task = tokio::spawn(async move {
-        while let Ok(message) = broadcast_rx.recv().await {
-            if ws_sender.send(Message::from(message)).await.is_err() {
+        while let Ok(message_json) = broadcast_rx.recv().await {
+            if ws_sender.send(Message::Text(message_json.into())).await.is_err() {
                 break;
             }
         }
     });
 
     let recv_task = {
-        let lobby_id = lobby_id.clone();
+        let game_id = game_id.clone();
         let player_id = player_id.clone();
-        let lobby_manager = lobby_manager.clone();
+        let game_manager = game_manager.clone();
         
         tokio::spawn(async move {
             while let Some(msg_result) = ws_receiver.next().await {
                 match msg_result {
                     Ok(Message::Text(text)) => {
-                        let text_string = text.to_string();
-                        
-                        let formatted_message = format!("{}: {}", player_id, text_string);
-                        
-                        if let Err(e) = lobby_manager.broadcast_to_lobby(&lobby_id, formatted_message).await {
-                            println!("[WS] Error broadcasting message: {}", e);
-                            break;
+                        match serde_json::from_str::<WebSocketMessage>(&text) {
+                            Ok(ws_message) => {
+                                if ws_message.game_id != game_id {
+                                    println!("[WS:: Game ID mismatch: expected {}, got {}]", game_id, ws_message.game_id);
+                                    continue;
+                                }
+                                
+                                match &ws_message.message {
+                                    PlayerLeft { player_id, .. } => {
+                                        if let Err(e) = game_manager.handle_player_left(&game_id, player_id).await {
+                                            println!("[WS] Error handling player left: {}", e);
+                                        }
+                                    }
+                                    _ => {
+                                        match serde_json::to_string(&ws_message) {
+                                            Ok(message_json) => {
+                                                if let Err(e) = game_manager.broadcast_to_game(&game_id, message_json).await {
+                                                    println!("[WS] Error broadcasting message: {}", e);
+                                                    break;
+                                                }
+                                            }
+                                            Err(e) => {
+                                                println!("[WS:: Error serializing message: {}]", e);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("[WS:: Invalid message format from player {}: {}]", player_id, e);
+                            }
                         }
                     }
                     Ok(Message::Close(_)) => {
@@ -88,11 +114,14 @@ async fn handle_socket(
         _ = recv_task => {},
     }
 
-    println!("[WS:: Player {} disconnected from lobby {}]", player_id, lobby_id);
+    println!("[WS:: Player {} disconnected from game {}]", player_id, game_id);
+    if let Err(e) = game_manager.remove_player_from_game(&player_id).await {
+        println!("[WS:: Error removing player on disconnect: {}]", e);
+    }
 }
 
-pub fn routes(lobby_manager: Arc<LobbyManager>) -> Router {
+pub fn routes(game_manager: Arc<GameManager>) -> Router {
     Router::new()
-        .route("/ws/{lobby_id}/{player_id}", get(websocket_handler))
-        .with_state(lobby_manager)
+        .route("/ws/{game_id}/{player_id}", get(websocket_handler))
+        .with_state(game_manager)
 }
