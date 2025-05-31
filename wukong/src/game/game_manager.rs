@@ -361,4 +361,34 @@ impl GameManager {
         let games = self.games.read().await;
         Ok(games.get(game_id).cloned())
     }
+
+
+    // Return the broadcast messages
+    // let messages = game_manager.modify_game(&game_id, |game| {
+    //     game.team_draft.handle_message(player, message)
+    // }).await?;
+
+    // Just modify without returning anything
+    // game_manager.modify_game(&game_id, |game| {
+    //     game.team_draft.phase = TeamDraftPhase::Drafting;
+    // }).await?;
+
+    // Return some computed value
+    // let player_count = game_manager.modify_game(&game_id, |game| {
+    //     game.players.len()
+    // }).await?;
+    pub async fn modify_game<F, R>(&self, game_id: &str, f: F) -> GameResult<R>
+    where
+        F: FnOnce(&mut Game) -> R,
+    {
+        let mut games = self.games.write().await;
+        if let Some(game) = games.get_mut(game_id) {
+            Ok(f(game))
+        } else {
+            Err(ErrorResponse{
+                error: ErrorCode::GameNotFound,
+                message: "Game not found".to_string(),
+            })
+        }
+    }
 }

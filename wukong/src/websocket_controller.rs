@@ -94,22 +94,27 @@ async fn handle_socket(
                                     GameStarted(game_started_msg) => {
                                         let updated_ws_message = match &game_started_msg.game_type {
                                             GameMode::TeamDraft => {
-                                                if let Ok(Some(mut game)) = game_manager.get_game(&game_id).await {
+                                                match game_manager.modify_game(&game_id, |game| {
                                                     let num_players = game.players.len() as u8;
                                                     game.team_draft.set_game_settings(num_players);
                                                     println!("[WS] Started TeamDraft game with {} players", num_players);
-                                                    
-                                                    WebSocketMessage {
-                                                        game_id: ws_message.game_id.clone(),
-                                                        message: GameStarted(GameStartedMessage {
-                                                            game_type: GameMode::TeamDraft,
-                                                            initial_team_draft_state: Some(game.team_draft.clone()),
-                                                        }),
-                                                        player_id: ws_message.player_id.clone(),
-                                                        auth_token: None,
+                                                    game.team_draft.clone()
+                                                }).await {
+                                                    Ok(updated_team_draft_state) => {
+                                                        WebSocketMessage {
+                                                            game_id: ws_message.game_id.clone(),
+                                                            message: GameStarted(GameStartedMessage {
+                                                                game_type: GameMode::TeamDraft,
+                                                                initial_team_draft_state: Some(updated_team_draft_state),
+                                                            }),
+                                                            player_id: ws_message.player_id.clone(),
+                                                            auth_token: None,
+                                                        }
                                                     }
-                                                } else {
-                                                    client_safe_ws_message(ws_message)
+                                                    Err(e) => {
+                                                        println!("[WS] Error modifying game for GameStarted: {}", e);
+                                                        client_safe_ws_message(ws_message)
+                                                    }
                                                 }
                                             }
                                         };
@@ -120,13 +125,24 @@ async fn handle_socket(
                                     }
                                     TeamDraft(team_draft_message) => {
                                         if let Some(auth_token) = &ws_message.auth_token {
-                                            if let Ok(Some(mut game)) = game_manager.get_game(&game_id).await {
-                                                let required_player_id = game.team_draft.get_correct_player_source_id(team_draft_message.clone());
-                                                
-                                                match game_manager.is_authorized(&required_player_id, auth_token).await {
-                                                    Ok(true) => {
+                                            let required_player_id = if let Ok(Some(game)) = game_manager.get_game(&game_id).await {
+                                                game.team_draft.get_correct_player_source_id(team_draft_message.clone())
+                                            } else {
+                                                println!("[WS] Game {} not found for team draft message", game_id);
+                                                continue;
+                                            };
+                                            
+                                            match game_manager.is_authorized(&required_player_id, auth_token).await {
+                                                Ok(true) => {
+                                                    match game_manager.modify_game(&game_id, |game| {
                                                         if let Some(source_player) = game.players.iter().find(|p| p.id == required_player_id).cloned() {
-                                                            let broadcast_messages = game.team_draft.handle_message(source_player, team_draft_message.clone());
+                                                            Some(game.team_draft.handle_message(source_player, team_draft_message.clone()))
+                                                        } else {
+                                                            println!("[WS] Required player {} not found in game", required_player_id);
+                                                            None
+                                                        }
+                                                    }).await {
+                                                        Ok(Some(broadcast_messages)) => {
                                                             for game_message in broadcast_messages {
                                                                 let broadcast_ws_message = WebSocketMessage {
                                                                     game_id: game_id.clone(),
@@ -139,19 +155,19 @@ async fn handle_socket(
                                                                     println!("[WS] Error broadcasting team draft message: {}", e);
                                                                 }
                                                             }
-                                                        } else {
-                                                            println!("[WS] Required player {} not found in game", required_player_id);
+                                                        }
+                                                        Ok(None) => {}
+                                                        Err(e) => {
+                                                            println!("[WS] Error modifying game for team draft: {}", e);
                                                         }
                                                     }
-                                                    Ok(false) => {
-                                                        println!("[WS] Player {} not authorized for team draft action", required_player_id);
-                                                    }
-                                                    Err(e) => {
-                                                        println!("[WS] Error checking authorization for team draft: {}", e);
-                                                    }
                                                 }
-                                            } else {
-                                                println!("[WS] Game {} not found for team draft message", game_id);
+                                                Ok(false) => {
+                                                    println!("[WS] Player {} not authorized for team draft action", required_player_id);
+                                                }
+                                                Err(e) => {
+                                                    println!("[WS] Error checking authorization for team draft: {}", e);
+                                                }
                                             }
                                         } else {
                                             println!("[WS] No auth token provided for team draft message");

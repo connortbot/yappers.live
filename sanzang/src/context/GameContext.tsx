@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react'
 import { useGameAPI } from '../hooks/useGameAPI'
+import { useTeamDraft } from '../hooks/useTeamDraft'
 import type { Game } from '../lib/bindings/Game'
 import type { Player } from '../lib/bindings/Player'
 import type { WebSocketMessage } from '../lib/bindings/WebSocketMessage'
@@ -33,6 +34,9 @@ interface GameContextState {
   sendMessage: (message: GameMessage) => void
   clearError: () => void
   leaveGame: () => void
+  
+  createPoolMessage: (pool: string) => GameMessage
+  createCompetitionMessage: (competition: string) => GameMessage
 }
 
 const GameContext = createContext<GameContextState | null>(null)
@@ -51,6 +55,14 @@ interface GameProviderProps {
 
 export function GameProvider({ children }: GameProviderProps) {
   const { createGame: createGameAPI, joinGame: joinGameAPI } = useGameAPI()
+  const {
+    teamDraftState,
+    updateTeamDraftState,
+    handleTeamDraftMessage,
+    createPoolMessage,
+    createCompetitionMessage,
+    resetTeamDraftState
+  } = useTeamDraft()
   
   const [game, setGame] = useState<Game | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
@@ -62,14 +74,14 @@ export function GameProvider({ children }: GameProviderProps) {
   const [messages, setMessages] = useState<string[]>([])
   const [latestEvent, setLatestEvent] = useState<GameMessage | null>(null)
   
-  const [teamDraftState, setTeamDraftState] = useState<TeamDraftManager | null>(null)
-  
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   const wsRef = useRef<WebSocket | null>(null)
 
   const handleGameMessage = useCallback((message: GameMessage) => {
+    handleTeamDraftMessage(message)
+    
     switch (message.type) {
       case 'PlayerJoined':
         setGame((prev: Game | null) => {
@@ -129,14 +141,14 @@ export function GameProvider({ children }: GameProviderProps) {
         
         const gameStartedMessage = message as GameStartedMessage
         if (gameStartedMessage.game_type.type === 'TeamDraft' && gameStartedMessage.initial_team_draft_state) {
-          setTeamDraftState(gameStartedMessage.initial_team_draft_state)
+          updateTeamDraftState(gameStartedMessage.initial_team_draft_state)
         }
         break
         
       default:
-        console.warn('Unknown message type:', message)
+        setLatestEvent(message)
     }
-  }, [])
+  }, [handleTeamDraftMessage, updateTeamDraftState])
 
   const connectWebSocketWithGameData = useCallback((gameData: Game, playerIdData: string) => {
     if (connected || connecting) return
@@ -162,10 +174,20 @@ export function GameProvider({ children }: GameProviderProps) {
       }
     }
 
-    ws.onclose = () => {
-      console.log('Disconnected from websocket')
+    ws.onclose = (event) => {
+      console.log('Disconnected from websocket', event.code, event.reason)
       setConnected(false)
       setConnecting(false)
+      
+      // Auto-reconnect in development mode if we have game data and it wasn't a manual disconnect
+      if (import.meta.env.DEV && gameData && playerIdData && event.code !== 1000) {
+        console.log('Attempting to reconnect in 1 second...')
+        setTimeout(() => {
+          if (!connected && !connecting) {
+            connectWebSocketWithGameData(gameData, playerIdData)
+          }
+        }, 1000)
+      }
     }
 
     ws.onerror = (error) => {
@@ -298,7 +320,8 @@ export function GameProvider({ children }: GameProviderProps) {
     setUsername(null)
     setMessages([])
     setError(null)
-  }, [disconnect])
+    resetTeamDraftState()
+  }, [disconnect, resetTeamDraftState])
 
   useEffect(() => {
     return () => {
@@ -326,7 +349,9 @@ export function GameProvider({ children }: GameProviderProps) {
     disconnect,
     sendMessage,
     clearError,
-    leaveGame
+    leaveGame,
+    createPoolMessage,
+    createCompetitionMessage
   }
 
   return (

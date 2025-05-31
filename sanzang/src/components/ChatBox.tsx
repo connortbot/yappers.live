@@ -24,11 +24,11 @@ export function ChatBox({ messages, onSendMessage, placeholder = "Type a message
   }, [messages])
 
   const handleSend = () => {
-    if (message.trim()) {
+    if (message) {
       const chatMessage: GameMessage = {
         type: 'ChatMessage',
         username: username,
-        message: message.trim(),
+        message: message,
       }
       onSendMessage(chatMessage)
       setMessage('')

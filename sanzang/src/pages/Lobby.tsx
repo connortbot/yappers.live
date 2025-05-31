@@ -93,14 +93,19 @@ export default function Lobby() {
   return (
     <Screen>
       <div className="flex justify-between items-center mb-6 sm:mb-8">
-        <Button
-          variant="secondary"
-          size="small"
-          onMouseUp={handleBackToHome}
-          className="text-xs sm:text-sm"
-        >
-          ← Back
-        </Button>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="secondary"
+            size="small"
+            onMouseUp={handleBackToHome}
+            className="text-xs sm:text-sm"
+          >
+            ← Back
+          </Button>
+          <h1 className="text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-bold font-primary leading-tight">
+            yappers.live
+          </h1>
+        </div>
         
         {game && (
           <Button
@@ -113,10 +118,6 @@ export default function Lobby() {
           </Button>
         )}
       </div>
-
-      <h1 className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl font-bold mb-6 sm:mb-8 font-primary text-center leading-tight">
-        yappers.live
-      </h1>
       
       {error && (
         <Section variant="error">
@@ -154,6 +155,15 @@ export default function Lobby() {
               {loading ? 'Creating...' : 'Create Game'}
             </Button>
           </FormRow>
+          <Button
+            variant="secondary"
+            size="small"
+            onMouseUp={handleBackToHome}
+            className="text-xs sm:text-sm mt-2"
+            disabled={true}
+          >
+            Mode: Team Draft
+          </Button>
         </Section>
       )}
 

@@ -1,11 +1,13 @@
 import { useNavigate } from 'react-router'
+import { useState, useEffect } from 'react'
 import { Button } from '../components/Button'
 import { Screen } from '../components/Screen'
 import { Section } from '../components/Section'
 import { PlayerList } from '../components/PlayerList'
 import { ChatBox } from '../components/ChatBox'
+import { Input } from '../components/Input'
+import { FormRow } from '../components/FormRow'
 import { useGameContext } from '../context/GameContext'
-import type { Player } from '../lib/bindings/Player'
 
 export default function TeamDraft() {
   const navigate = useNavigate()
@@ -15,10 +17,38 @@ export default function TeamDraft() {
     username,
     connected,
     messages,
+    latestEvent,
     teamDraftState,
     sendMessage,
-    leaveGame
+    leaveGame,
+    createPoolMessage,
+    createCompetitionMessage
   } = useGameContext()
+
+  const [poolInput, setPoolInput] = useState('')
+  const [competitionInput, setCompetitionInput] = useState('')
+
+  const isYapper = playerId === teamDraftState?.yapper_id
+
+  const handlePoolChange = (value: string) => {
+    setPoolInput(value)
+    if (value) {
+      const poolMessage = createPoolMessage(value)
+      sendMessage(poolMessage)
+    }
+  }
+
+  const handleCompetitionChange = (value: string) => {
+    setCompetitionInput(value)
+    if (value) {
+      const competitionMessage = createCompetitionMessage(value)
+      sendMessage(competitionMessage)
+    }
+  }
+
+  const handleConfirm = () => {
+    
+  }
 
   const handleLeaveGame = () => {
     if (game?.id && username) {
@@ -35,6 +65,21 @@ export default function TeamDraft() {
       navigate('/')
     }, 100)
   }
+
+  useEffect(() => {
+    if (latestEvent) {
+      if (latestEvent.type === 'TeamDraft') {
+        switch (latestEvent.msg_type) {
+          case 'SetPool':
+            setPoolInput(latestEvent.pool)
+            break
+          case 'SetCompetition':
+            setCompetitionInput(latestEvent.competition)
+            break
+        }
+      }
+    }
+  }, [latestEvent])
 
   if (!game || !teamDraftState) {
     return (
@@ -56,10 +101,74 @@ export default function TeamDraft() {
     )
   }
 
+  const renderDraftSection = () => {
+    if (teamDraftState.phase === 'YapperChoosing') {
+      return (
+        <Section title={isYapper ? "What is this round all about?" : "The Yapper is choosing!"}>
+          <div className="space-y-4 text-center">
+            <p className="font-secondary text-pencil text-base sm:text-lg italic">
+              Choose someone/something that is...
+            </p>
+            
+            {isYapper ? (
+              <FormRow>
+                <Input
+                  type="text"
+                  value={poolInput}
+                  onChange={(e) => handlePoolChange(e.target.value)}
+                  placeholder="Enter pool description"
+                  className="flex-1"
+                />
+              </FormRow>
+            ) : (
+              <div className="text-2xl sm:text-3xl font-bold font-primary text-pencil">
+                {teamDraftState.round_data.pool || '...'}
+              </div>
+            )}
+
+            <p className="font-secondary text-pencil text-base sm:text-lg italic">
+              and is competing to win at...
+            </p>
+
+            {isYapper ? (
+              <FormRow>
+                <Input
+                  type="text"
+                  value={competitionInput}
+                  onChange={(e) => handleCompetitionChange(e.target.value)}
+                  placeholder="Enter competition description"
+                  className="flex-1"
+                />
+              </FormRow>
+            ) : (
+              <div className="text-2xl sm:text-3xl font-bold font-primary text-pencil">
+                {teamDraftState.round_data.competition || '...'}
+              </div>
+            )}
+
+            {isYapper && (
+              <Button
+                variant="secondary"
+                size="medium"
+                onMouseUp={handleConfirm}
+              >
+                Let's Begin!
+              </Button>
+            )}
+          </div>
+        </Section>
+      )
+    }
+    
+    return null
+  }
+
   return (
     <Screen>
       <div className="flex justify-between items-center mb-6 sm:mb-8">
-        
+        <h1 className="text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-bold font-primary leading-tight">
+          Team Draft
+        </h1>
         <Button
           variant="secondary"
           size="small"
@@ -70,30 +179,7 @@ export default function TeamDraft() {
         </Button>
       </div>
 
-      <h1 className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl font-bold mb-6 sm:mb-8 font-primary text-center leading-tight">
-        Team Draft
-      </h1>
-
-      <Section title="Draft Status">
-        <div className="space-y-2 text-sm sm:text-base">
-          <p className="font-secondary text-pencil">
-            <strong>Yapper:</strong> {game.players.find((p: Player) => p.id === teamDraftState.yapper_id)?.username || 'Unknown'}
-          </p>
-          {teamDraftState.round_data.pool && (
-            <p className="font-secondary text-pencil">
-              <strong>Pool:</strong> {teamDraftState.round_data.pool}
-            </p>
-          )}
-          {teamDraftState.round_data.competition && (
-            <p className="font-secondary text-pencil">
-              <strong>Competition:</strong> {teamDraftState.round_data.competition}
-            </p>
-          )}
-          <p className="font-secondary text-pencil">
-            <strong>Team Size:</strong> {teamDraftState.round_data.team_size}
-          </p>
-        </div>
-      </Section>
+      {renderDraftSection()}
 
       {connected && (
         <div className="flex gap-2 sm:gap-3 flex-col sm:flex-row">

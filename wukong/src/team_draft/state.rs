@@ -83,26 +83,20 @@ impl TeamDraftManager {
     }
 
     // Returns messages meant to be broadcasted to game players
-    pub fn handle_message(&mut self, source_player: Player, message: TeamDraftMessage) -> Vec<GameMessage> {
+    pub fn handle_message(&mut self, _source_player: Player, message: TeamDraftMessage) -> Vec<GameMessage> {
         match message {
-            TeamDraftMessage::SetPool { pool } => {
-                self.round_data.pool = pool.clone();
+            TeamDraftMessage::SetPool(set_pool_msg) => {
+                self.round_data.pool = set_pool_msg.pool.clone();
+                println!("Round data: {:?}", self.round_data);
                 vec![
-                    GameMessage::ChatMessage {
-                        username: source_player.username.clone(),
-                        message: format!("Draft from someone/something that is...: {}", pool),
-                    },
-                    GameMessage::TeamDraft(TeamDraftMessage::SetPool { pool }),
+                    GameMessage::TeamDraft(TeamDraftMessage::SetPool(set_pool_msg)),
                 ]
             },
-            TeamDraftMessage::SetCompetition { competition } => {
-                self.round_data.competition = competition.clone();
+            TeamDraftMessage::SetCompetition(set_competition_msg) => {
+                self.round_data.competition = set_competition_msg.competition.clone();
+                println!("Round data: {:?}", self.round_data);
                 vec![
-                    GameMessage::ChatMessage {
-                        username: source_player.username.clone(),
-                        message: format!("Draft from someone/something that is... {}, and is competing to win at... {}", self.round_data.pool, competition),
-                    },
-                    GameMessage::TeamDraft(TeamDraftMessage::SetCompetition { competition }),
+                    GameMessage::TeamDraft(TeamDraftMessage::SetCompetition(set_competition_msg)),
                 ]
             },
         }
