@@ -2,28 +2,24 @@ import { useState } from 'react'
 import { Input } from './Input'
 import { Button } from './Button'
 import { FormRow } from './FormRow'
-import type { WebSocketMessage } from '../lib/bindings/WebSocketMessage'
+import type { GameMessage } from '../lib/bindings/GameMessage'
 
 interface ChatBoxProps {
   messages: string[]
-  onSendMessage: (message: WebSocketMessage) => void
+  onSendMessage: (message: GameMessage) => void
   placeholder?: string
-  gameId: string
   username: string
 }
 
-export function ChatBox({ messages, onSendMessage, placeholder = "Type a message", gameId, username }: ChatBoxProps) {
+export function ChatBox({ messages, onSendMessage, placeholder = "Type a message", username }: ChatBoxProps) {
   const [message, setMessage] = useState('')
 
   const handleSend = () => {
     if (message.trim()) {
-      const chatMessage: WebSocketMessage = {
-        game_id: gameId,
-        message: {
-          type: 'ChatMessage',
-          username: username,
-          message: message.trim()
-        }
+      const chatMessage: GameMessage = {
+        type: 'ChatMessage',
+        username: username,
+        message: message.trim(),
       }
       onSendMessage(chatMessage)
       setMessage('')

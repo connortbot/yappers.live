@@ -10,6 +10,7 @@ interface GameContextState {
   game: Game | null
   playerId: string | null
   username: string | null
+  authToken: string | null
   
   connected: boolean
   connecting: boolean
@@ -23,7 +24,7 @@ interface GameContextState {
   joinGame: (username: string, gameCode: string) => Promise<void>
   connectWebSocket: () => void
   disconnect: () => void
-  sendMessage: (message: WebSocketMessage) => void
+  sendMessage: (message: GameMessage) => void
   clearError: () => void
   leaveGame: () => void
 }
@@ -48,6 +49,7 @@ export function GameProvider({ children }: GameProviderProps) {
   const [game, setGame] = useState<Game | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
   const [username, setUsername] = useState<string | null>(null)
+  const [authToken, setAuthToken] = useState<string | null>(null)
   
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
@@ -138,7 +140,6 @@ export function GameProvider({ children }: GameProviderProps) {
     ws.onmessage = (event) => {
       try {
         const wsMessage: WebSocketMessage = JSON.parse(event.data)
-        console.log('Received WebSocket message:', wsMessage)
         handleGameMessage(wsMessage.message)
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error)
@@ -193,7 +194,7 @@ export function GameProvider({ children }: GameProviderProps) {
         setGame(data.game)
         setUsername(trimmedUsername)
         setPlayerId(hostPlayerId)
-        
+        setAuthToken(data.auth_token)
         connectWebSocketWithGameData(data.game, hostPlayerId)
       }
     } catch (error) {
@@ -238,6 +239,7 @@ export function GameProvider({ children }: GameProviderProps) {
         setGame(data.game)
         setUsername(trimmedUsername)
         setPlayerId(joinedPlayerId)
+        setAuthToken(data.auth_token)
         
         connectWebSocketWithGameData(data.game, joinedPlayerId)
       }
@@ -259,27 +261,16 @@ export function GameProvider({ children }: GameProviderProps) {
     }
   }, [])
 
-  const disconnectSync = useCallback(() => {
-    if (game?.id && playerId && username) {
-      sendMessage({
-        game_id: game.id,
-        message: {
-          type: 'PlayerLeft',
-          username: username,
-          player_id: playerId
-        }
-      })
-    }
-    disconnect(); 
-  }, [])
-
-  
-
-  const sendMessage = useCallback((message: WebSocketMessage) => {
+  const sendMessage = (message: GameMessage) => {
     if (wsRef.current && message) {
-      wsRef.current.send(JSON.stringify(message))
+      wsRef.current.send(JSON.stringify({
+        game_id: game?.id,
+        auth_token: authToken,
+        player_id: playerId,
+        message: message
+      }))
     }
-  }, [])
+  }
 
   const clearError = useCallback(() => {
     setError(null)
@@ -295,24 +286,18 @@ export function GameProvider({ children }: GameProviderProps) {
   }, [disconnect])
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      disconnectSync()
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
-
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
       if (wsRef.current) {
         wsRef.current.close()
       }
     }
-  }, [disconnectSync])
+  }, [])
 
   const contextValue: GameContextState = {
     game,
     playerId,
     username,
+    authToken,
     connected,
     connecting,
     messages,

@@ -18,7 +18,8 @@ pub struct CreateGameRequest {
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct CreateGameResponse {
-    pub game: Game
+    pub game: Game,
+    pub auth_token: String,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -29,7 +30,8 @@ pub struct JoinGameRequest {
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct JoinGameResponse {
-    pub game: Game
+    pub game: Game,
+    pub auth_token: String,
 }
 
 #[utoipa::path(
@@ -47,9 +49,9 @@ pub async fn create_game(
 ) -> Result<Json<CreateGameResponse>, String> {
     println!("[POST: /game/create]");
     match game_manager.create_game(payload.username).await {
-        Ok(game) => {
+        Ok(game_entry) => {
             println!("[POST: /game/create]");
-            Ok(Json(CreateGameResponse { game }))
+            Ok(Json(CreateGameResponse { game: game_entry.game, auth_token: game_entry.auth_token }))
         }
         Err(e) => {
             println!("[POST: /game/create] Error: {}", e);
@@ -73,9 +75,9 @@ pub async fn join_game(
 ) -> Result<Json<JoinGameResponse>, String> {
     println!("[POST: /game/join]");
     match game_manager.join_game_by_code(payload.username, payload.game_code).await {
-        Ok(game) => {
+        Ok(game_entry) => {
             println!("[POST: /game/join]");
-            Ok(Json(JoinGameResponse { game }))
+            Ok(Json(JoinGameResponse { game: game_entry.game, auth_token: game_entry.auth_token }))
         }
         Err(e) => {
             println!("[POST: /game/join] Error: {}", e);

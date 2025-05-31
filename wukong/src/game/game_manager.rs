@@ -30,6 +30,10 @@ pub struct Game {
     pub created_at: i32,
 }
 
+pub struct GameEntry {
+    pub game: Game,
+    pub auth_token: String,
+}
 pub type GameResult<T> = Result<T, ErrorResponse>;
 
 #[derive(Default)]
@@ -37,6 +41,7 @@ pub struct GameManager {
     games: RwLock<HashMap<String, Game>>,
     player_to_game: RwLock<HashMap<String, String>>,
     game_broadcasters: RwLock<HashMap<String, broadcast::Sender<String>>>,
+    player_to_auth_token: RwLock<HashMap<String, String>>,
     code_to_game: RwLock<HashMap<String, String>>,
 }
 
@@ -57,7 +62,15 @@ impl GameManager {
             .collect()
     }
 
-    pub async fn create_game(&self, host_username: String) -> GameResult<Game> {
+    pub async fn is_authorized(&self, player_id: &str, auth_token: &str) -> GameResult<bool> {
+        let player_to_auth_token = self.player_to_auth_token.read().await;
+        let authorized = player_to_auth_token.get(player_id)
+            .map(|token| token == auth_token)
+            .unwrap_or(false);
+        Ok(authorized)
+    }
+
+    pub async fn create_game(&self, host_username: String) -> GameResult<GameEntry> {
         if host_username.trim().is_empty() {
             return Err(ErrorResponse{
                 error: ErrorCode::InvalidInput("Username cannot be empty".to_string()),
@@ -67,6 +80,7 @@ impl GameManager {
 
         let game_id = Uuid::new_v4().to_string();
         let host_id = Uuid::new_v4().to_string();
+        let auth_token = Uuid::new_v4().to_string();
 
         let game_code = loop {
             let code = self.generate_game_code();
@@ -94,6 +108,7 @@ impl GameManager {
         let mut player_to_game = self.player_to_game.write().await;
         let mut game_broadcasters = self.game_broadcasters.write().await;
         let mut code_to_game = self.code_to_game.write().await;
+        let mut player_to_auth_token = self.player_to_auth_token.write().await;
 
         if player_to_game.contains_key(&host_id) {
             return Err(ErrorResponse{
@@ -102,6 +117,8 @@ impl GameManager {
             });
         }
 
+        player_to_auth_token.insert(host_id.clone(), auth_token.clone());
+
         let (tx, _) = broadcast::channel(100);
         game_broadcasters.insert(game_id.clone(), tx);
 
@@ -109,10 +126,13 @@ impl GameManager {
         player_to_game.insert(host_id, game_id.clone());
         code_to_game.insert(game_code, game_id);
 
-        Ok(game)
+        Ok(GameEntry {
+            game: game,
+            auth_token: auth_token,
+        })
     }
 
-    pub async fn join_game_by_code(&self, player_username: String, game_code: String) -> GameResult<Game> {
+    pub async fn join_game_by_code(&self, player_username: String, game_code: String) -> GameResult<GameEntry> {
         if player_username.trim().is_empty() {
             return Err(ErrorResponse{
                 error: ErrorCode::InvalidInput("Username cannot be empty".to_string()),
@@ -133,7 +153,7 @@ impl GameManager {
         self.join_game(player_username, game_id).await
     }
 
-    pub async fn join_game(&self, player_username: String, game_id: String) -> GameResult<Game> {
+    pub async fn join_game(&self, player_username: String, game_id: String) -> GameResult<GameEntry> {
         if player_username.trim().is_empty() {
             return Err(ErrorResponse{
                 error: ErrorCode::InvalidInput("Username cannot be empty".to_string()),
@@ -142,6 +162,7 @@ impl GameManager {
         }
 
         let player_id = Uuid::new_v4().to_string();
+        let auth_token = Uuid::new_v4().to_string();
         let player = Player {
             id: player_id.clone(),
             username: player_username.clone(),
@@ -175,22 +196,28 @@ impl GameManager {
             game.clone()
         };
 
+        let mut player_to_auth_token = self.player_to_auth_token.write().await;
+        player_to_auth_token.insert(player_id.clone(), auth_token.clone());
+
         let player_joined = GameMessage::PlayerJoined {
             username: player_username,
-            player_id: player_id,
+            player_id: player_id.clone(),
         };
         let ws_message = WebSocketMessage {
             game_id: game_id.clone(),
             message: player_joined,
+            player_id: player_id.clone(),
+            auth_token: None, // don't broadcast auth tokens to client
         };
 
-        if let Ok(message_json) = serde_json::to_string(&ws_message) {
-            if let Err(e) = self.broadcast_to_game(&game_id, message_json).await {
-                println!("Failed to broadcast player joined message: {}", e);
-            }
+        if let Err(e) = self.broadcast_to_game(&game_id, ws_message).await {
+            println!("Failed to broadcast player joined message: {}", e);
         }
 
-        Ok(updated_game)
+        Ok(GameEntry {
+            game: updated_game,
+            auth_token: auth_token,
+        })
     }
 
     pub async fn get_broadcaster(&self, game_id: &str) -> GameResult<broadcast::Sender<String>> {
@@ -204,9 +231,22 @@ impl GameManager {
             })
     }
 
-    pub async fn broadcast_to_game(&self, game_id: &str, message: String) -> GameResult<()> {
+    pub async fn broadcast_to_game(&self, game_id: &str, ws_message: WebSocketMessage) -> GameResult<()> {
+        if ws_message.auth_token.is_some() {
+            return Err(ErrorResponse {
+                error: ErrorCode::InternalServerError,
+                message: "Cannot broadcast message with auth token to players - this would be unsafe".to_string(),
+            });
+        }
+
+        let message_json = serde_json::to_string(&ws_message)
+            .map_err(|e| ErrorResponse {
+                error: ErrorCode::InternalServerError,
+                message: format!("Failed to serialize message: {}", e),
+            })?;
+        
         let broadcaster = self.get_broadcaster(game_id).await?;
-        let _ = broadcaster.send(message);
+        let _ = broadcaster.send(message_json);
         Ok(())
     }
 
@@ -243,11 +283,11 @@ impl GameManager {
                 let ws_message = WebSocketMessage {
                     game_id: game_id.clone(),
                     message: player_disconnected,
+                    player_id: player_id.clone(),
+                    auth_token: None,
                 };
 
-                if let Ok(message_json) = serde_json::to_string(&ws_message) {
-                    let _ = self.broadcast_to_game(&game_id, message_json).await;
-                }
+                let _ = self.broadcast_to_game(&game_id, ws_message).await;
             }
 
             if should_cleanup_game {
@@ -293,11 +333,11 @@ impl GameManager {
             let ws_message = WebSocketMessage {
                 game_id: game_id.to_string(),
                 message: chat_message,
+                player_id: player_id.to_string(),
+                auth_token: None,
             };
 
-            if let Ok(message_json) = serde_json::to_string(&ws_message) {
-                let _ = self.broadcast_to_game(game_id, message_json).await;
-            }
+            let _ = self.broadcast_to_game(game_id, ws_message).await;
         }
 
         Ok(())

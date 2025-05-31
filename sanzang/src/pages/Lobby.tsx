@@ -44,12 +44,9 @@ export default function Lobby() {
   const handleLeaveGame = () => {
     if (game?.id && username) {
       const playerLeftMessage = {
-        game_id: game.id,
-        message: {
-          type: 'PlayerLeft' as const,
-          username: username,
-          player_id: playerId || ''
-        }
+        type: 'PlayerLeft' as const,
+        username: username,
+        player_id: playerId || ''
       }
       sendMessage(playerLeftMessage)
     }
@@ -188,7 +185,6 @@ export default function Lobby() {
           <ChatBox 
             messages={messages}
             onSendMessage={sendMessage}
-            gameId={game?.id || ''}
             username={username || ''}
           />
         </Section>
