@@ -29,6 +29,14 @@ export function useTeamDraft() {
               competition: message.competition
             }
             break
+          case 'StartDraft':
+            updated.phase = 'Drafting'
+            updated.round_data = {
+              ...updated.round_data,
+              starting_drafter_id: message.starting_drafter_id,
+              current_drafter_id: message.starting_drafter_id
+            }
+            break
         }
         
         return updated
@@ -52,6 +60,14 @@ export function useTeamDraft() {
     } as any
   }, [])
 
+  const createStartDraftMessage = useCallback((starting_drafter_id: string): GameMessage => {
+    return {
+      type: 'TeamDraft',
+      msg_type: 'StartDraft',
+      starting_drafter_id: starting_drafter_id
+    } as any
+  }, [])
+
   const resetTeamDraftState = useCallback(() => {
     setTeamDraftState(null)
   }, [])
@@ -62,6 +78,7 @@ export function useTeamDraft() {
     handleTeamDraftMessage,
     createPoolMessage,
     createCompetitionMessage,
+    createStartDraftMessage,
     resetTeamDraftState
   }
 } 

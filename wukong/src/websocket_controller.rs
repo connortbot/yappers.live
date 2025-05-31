@@ -135,12 +135,8 @@ async fn handle_socket(
                                             match game_manager.is_authorized(&required_player_id, auth_token).await {
                                                 Ok(true) => {
                                                     match game_manager.modify_game(&game_id, |game| {
-                                                        if let Some(source_player) = game.players.iter().find(|p| p.id == required_player_id).cloned() {
-                                                            Some(game.team_draft.handle_message(source_player, team_draft_message.clone()))
-                                                        } else {
-                                                            println!("[WS] Required player {} not found in game", required_player_id);
-                                                            None
-                                                        }
+                                                        let players = game.players.clone();
+                                                        Some(game.team_draft.handle_message(players, team_draft_message.clone()))
                                                     }).await {
                                                         Ok(Some(broadcast_messages)) => {
                                                             for game_message in broadcast_messages {

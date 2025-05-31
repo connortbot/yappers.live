@@ -6,6 +6,9 @@ use crate::game::messages::GameMessage;
 use crate::team_draft::messages::TeamDraftMessage;
 use crate::game::game_manager::Player;
 
+pub const SERVER_ONLY_AUTHORIZED: &str = "00000000-0000-0000-0000-000000000000";
+
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
 #[ts(export)]
 pub enum TeamDraftPhase {
@@ -18,9 +21,13 @@ pub enum TeamDraftPhase {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
 #[ts(export)]
 pub struct Round {
+    pub round: u8,
     pub pool: String,
     pub competition: String,
     pub team_size: u8,
+
+    pub starting_drafter_id: String,
+    pub current_drafter_id: String,
 
     pub player_to_picks: HashMap<String, Vec<String>>,
 }
@@ -39,7 +46,6 @@ pub struct TeamDraftManager {
     pub round_data: Round,
 
     // Turn
-    pub turn_player_id: String,
     pub player_points: HashMap<String, u8>,
 
 }
@@ -56,12 +62,14 @@ impl TeamDraftManager {
             max_rounds: max_rounds,
             phase: TeamDraftPhase::YapperChoosing,
             round_data: Round {
+                round: 1,
                 pool: String::new(),
                 competition: String::new(),
                 team_size: 3,
                 player_to_picks: HashMap::new(),
+                starting_drafter_id: String::new(),
+                current_drafter_id: String::new(),
             },
-            turn_player_id: String::new(),
             player_points: HashMap::new(),
         }
     }
@@ -79,11 +87,18 @@ impl TeamDraftManager {
         match message {
             TeamDraftMessage::SetPool { .. } => self.yapper_id.clone(),
             TeamDraftMessage::SetCompetition { .. } => self.yapper_id.clone(),
+            TeamDraftMessage::StartDraft { .. } => self.yapper_id.clone(),
+            TeamDraftMessage::DraftPick { .. } => self.round_data.current_drafter_id.clone(),
+            TeamDraftMessage::AwardingPhase { .. } => SERVER_ONLY_AUTHORIZED.to_string(),
+            TeamDraftMessage::AwardPoint { .. } => self.yapper_id.clone(),
+            TeamDraftMessage::NextRound { .. } => SERVER_ONLY_AUTHORIZED.to_string(),
+            TeamDraftMessage::NextDrafter { .. } => SERVER_ONLY_AUTHORIZED.to_string(),
+            TeamDraftMessage::CompleteGame { .. } => SERVER_ONLY_AUTHORIZED.to_string(),
         }
     }
 
     // Returns messages meant to be broadcasted to game players
-    pub fn handle_message(&mut self, _source_player: Player, message: TeamDraftMessage) -> Vec<GameMessage> {
+    pub fn handle_message(&mut self, players: Vec<Player>, message: TeamDraftMessage) -> Vec<GameMessage> {
         match message {
             TeamDraftMessage::SetPool(set_pool_msg) => {
                 self.round_data.pool = set_pool_msg.pool.clone();
@@ -99,6 +114,127 @@ impl TeamDraftManager {
                     GameMessage::TeamDraft(TeamDraftMessage::SetCompetition(set_competition_msg)),
                 ]
             },
+            TeamDraftMessage::StartDraft(start_draft_msg) => {
+                self.phase = TeamDraftPhase::Drafting;
+                self.round_data.starting_drafter_id = start_draft_msg.starting_drafter_id.clone();
+                self.round_data.current_drafter_id = start_draft_msg.starting_drafter_id.clone();
+                self.round_data.player_to_picks.clear();
+                for player in &players {
+                    self.round_data.player_to_picks.entry(player.id.clone()).or_insert(Vec::new());
+                }
+                for player in &players {
+                    self.player_points.entry(player.id.clone()).or_insert(0);
+                }
+                
+                vec![
+                    GameMessage::TeamDraft(TeamDraftMessage::StartDraft(start_draft_msg)),
+                ]
+            },
+            TeamDraftMessage::DraftPick(draft_pick_msg) => {
+                if let Some(picks) = self.round_data.player_to_picks.get_mut(&draft_pick_msg.drafter_id) {
+                    picks.push(draft_pick_msg.pick.clone());
+                }
+                
+                let mut messages = vec![
+                    GameMessage::TeamDraft(TeamDraftMessage::DraftPick(draft_pick_msg)),
+                ];
+                
+                let all_teams_complete = self.round_data.player_to_picks.values()
+                    .all(|picks| picks.len() >= self.round_data.team_size as usize);
+                
+                if all_teams_complete {
+                    self.phase = TeamDraftPhase::Awarding;
+                    messages.push(GameMessage::TeamDraft(TeamDraftMessage::AwardingPhase(
+                        crate::team_draft::messages::AwardingPhase {}
+                    )));
+                } else {
+                    if let Some(current_index) = players.iter().position(|p| p.id == self.round_data.current_drafter_id) {
+                        let mut next_index = (current_index + 1) % players.len();
+                        while players[next_index].id == self.yapper_id {
+                            next_index = (next_index + 1) % players.len();
+                        }
+                        self.round_data.current_drafter_id = players[next_index].id.clone();
+                        messages.push(GameMessage::TeamDraft(TeamDraftMessage::NextDrafter(
+                            crate::team_draft::messages::NextDrafter {
+                                drafter_id: self.round_data.current_drafter_id.clone(),
+                            }
+                        )));
+                    }
+                }
+                
+                messages
+            },
+            TeamDraftMessage::AwardPoint(award_point_msg) => {
+                if let Some(points) = self.player_points.get_mut(&award_point_msg.player_id) {
+                    *points += 1;
+                }
+                
+                let mut messages = vec![
+                    GameMessage::TeamDraft(TeamDraftMessage::AwardPoint(award_point_msg)),
+                ];
+                
+                if self.round_data.round >= self.max_rounds {
+                    let final_points = self.player_points.clone();
+                    
+                    self.phase = TeamDraftPhase::YapperChoosing;
+                    self.round_data = Round {
+                        round: 1,
+                        pool: String::new(),
+                        competition: String::new(),
+                        team_size: 3,
+                        player_to_picks: HashMap::new(),
+                        starting_drafter_id: String::new(),
+                        current_drafter_id: String::new(),
+                    };
+                    self.player_points = HashMap::new();
+                    
+                    messages.push(GameMessage::TeamDraft(TeamDraftMessage::CompleteGame(
+                        crate::team_draft::messages::CompleteGame {
+                            player_points: final_points,
+                        }
+                    )));
+                } else {
+                    let next_yapper_index = (self.yapper_index + 1) % players.len() as u8;
+                    if let Some(next_yapper) = players.get(next_yapper_index as usize) {
+                        self.yapper_id = next_yapper.id.clone();
+                        self.yapper_index = next_yapper_index;
+                    }
+                    
+                    self.phase = TeamDraftPhase::YapperChoosing;
+                    self.round_data.round += 1;
+                    self.round_data.pool = String::new();
+                    self.round_data.competition = String::new();
+                    self.round_data.team_size = 3;
+                    self.round_data.player_to_picks.clear();
+                    self.round_data.starting_drafter_id = String::new();
+                    self.round_data.current_drafter_id = String::new();
+                    
+                    messages.push(GameMessage::TeamDraft(TeamDraftMessage::NextRound(
+                        crate::team_draft::messages::NextRound {
+                            round: self.round_data.round,
+                            team_size: self.round_data.team_size,
+                        }
+                    )));
+                }
+                
+                messages
+            },
+            TeamDraftMessage::AwardingPhase(_) => {
+                // Server-only message, do nothing
+                vec![]
+            },
+            TeamDraftMessage::CompleteGame(_) => {
+                // Server-only message, do nothing
+                vec![]
+            },
+            TeamDraftMessage::NextRound(_) => {
+                // Server-only message, do nothing
+                vec![]
+            },
+            TeamDraftMessage::NextDrafter(_) => {
+                // Server-only message, do nothing
+                vec![]
+            }
         }
     }
 }

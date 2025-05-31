@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router'
 import { useState, useEffect } from 'react'
+import { IoCheckmark } from 'react-icons/io5'
 import { Button } from '../components/Button'
 import { Screen } from '../components/Screen'
 import { Section } from '../components/Section'
@@ -22,11 +23,14 @@ export default function TeamDraft() {
     sendMessage,
     leaveGame,
     createPoolMessage,
-    createCompetitionMessage
+    createCompetitionMessage,
+    createStartDraftMessage
   } = useGameContext()
 
   const [poolInput, setPoolInput] = useState('')
   const [competitionInput, setCompetitionInput] = useState('')
+  const [showPlayerSelection, setShowPlayerSelection] = useState(false)
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
 
   const isYapper = playerId === teamDraftState?.yapper_id
 
@@ -47,7 +51,22 @@ export default function TeamDraft() {
   }
 
   const handleConfirm = () => {
-    
+    if (poolInput && competitionInput) {
+      setShowPlayerSelection(true)
+    }
+  }
+
+  const handlePlayerSelect = (playerId: string) => {
+    setSelectedPlayerId(playerId)
+  }
+
+  const handleStartDraft = () => {
+    if (selectedPlayerId) {
+      const startDraftMessage = createStartDraftMessage(selectedPlayerId)
+      sendMessage(startDraftMessage)
+      setShowPlayerSelection(false)
+      setSelectedPlayerId(null)
+    }
   }
 
   const handleLeaveGame = () => {
@@ -81,6 +100,13 @@ export default function TeamDraft() {
     }
   }, [latestEvent])
 
+  // StartDraft handler
+  useEffect(() => {
+    if (latestEvent?.type === 'TeamDraft' && latestEvent.msg_type === 'StartDraft' && teamDraftState?.round_data.current_drafter_id) {
+      console.log('StartDraft event received')
+    }
+  }, [latestEvent, teamDraftState?.round_data.current_drafter_id])
+
   if (!game || !teamDraftState) {
     return (
       <Screen>
@@ -103,6 +129,45 @@ export default function TeamDraft() {
 
   const renderDraftSection = () => {
     if (teamDraftState.phase === 'YapperChoosing') {
+      if (showPlayerSelection && isYapper) {
+        return (
+          <Section title="Choose the first drafter:">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {game.players.map((player) => (
+                  player.id !== playerId && (
+                    <Button
+                      key={player.id}
+                      variant={'primary'}
+                      size="medium"
+                      onMouseUp={() => handlePlayerSelect(player.id)}
+                      className="w-full"
+                    >
+                      <span className="flex items-center justify-center gap-2">
+                        {player.username}
+                        {selectedPlayerId === player.id && <IoCheckmark className="w-5 h-5" />}
+                      </span>
+                    </Button>
+                  )
+                ))}
+              </div>
+              
+              {selectedPlayerId && (
+                <div className="text-center">
+                  <Button
+                    variant="primary"
+                    size="large"
+                    onMouseUp={handleStartDraft}
+                  >
+                    Start Draft!
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Section>
+        )
+      }
+
       return (
         <Section title={isYapper ? "What is this round all about?" : "The Yapper is choosing!"}>
           <div className="space-y-4 text-center">
@@ -151,9 +216,32 @@ export default function TeamDraft() {
                 variant="secondary"
                 size="medium"
                 onMouseUp={handleConfirm}
+                disabled={!poolInput || !competitionInput}
               >
                 Let's Begin!
               </Button>
+            )}
+          </div>
+        </Section>
+      )
+    }
+
+    if (teamDraftState.phase === 'Drafting') {
+      const currentDrafterId = teamDraftState.round_data.current_drafter_id
+      const currentDrafter = game.players.find(p => p.id === currentDrafterId)
+      const isDrafting = currentDrafterId === playerId
+
+      return (
+        <Section title="Drafting Phase">
+          <div className="text-center">
+            {isDrafting ? (
+              <p className="text-2xl sm:text-3xl font-bold font-primary text-pencil">
+                I am drafting
+              </p>
+            ) : (
+              <p className="text-2xl sm:text-3xl font-bold font-primary text-pencil">
+                {currentDrafter?.username || 'Someone'} is thinking!
+              </p>
             )}
           </div>
         </Section>

@@ -150,10 +150,14 @@ export interface components {
         };
         Round: {
             competition: string;
+            current_drafter_id: string;
             player_to_picks: {
                 [key: string]: string[];
             };
             pool: string;
+            /** Format: int32 */
+            round: number;
+            starting_drafter_id: string;
             /** Format: int32 */
             team_size: number;
         };
@@ -165,7 +169,6 @@ export interface components {
                 [key: string]: number;
             };
             round_data: components["schemas"]["Round"];
-            turn_player_id: string;
             yapper_id: string;
             /** Format: int32 */
             yapper_index: number;

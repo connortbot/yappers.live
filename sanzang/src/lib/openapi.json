@@ -438,13 +438,19 @@
       "Round": {
         "type": "object",
         "required": [
+          "round",
           "pool",
           "competition",
           "team_size",
+          "starting_drafter_id",
+          "current_drafter_id",
           "player_to_picks"
         ],
         "properties": {
           "competition": {
+            "type": "string"
+          },
+          "current_drafter_id": {
             "type": "string"
           },
           "player_to_picks": {
@@ -462,6 +468,14 @@
           "pool": {
             "type": "string"
           },
+          "round": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "starting_drafter_id": {
+            "type": "string"
+          },
           "team_size": {
             "type": "integer",
             "format": "int32",
@@ -477,7 +491,6 @@
           "max_rounds",
           "phase",
           "round_data",
-          "turn_player_id",
           "player_points"
         ],
         "properties": {
@@ -502,9 +515,6 @@
           },
           "round_data": {
             "$ref": "#/components/schemas/Round"
-          },
-          "turn_player_id": {
-            "type": "string"
           },
           "yapper_id": {
             "type": "string"
