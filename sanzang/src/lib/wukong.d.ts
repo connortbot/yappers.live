@@ -108,6 +108,7 @@ export interface components {
             username: string;
         };
         CreateGameResponse: {
+            auth_token: string;
             game: components["schemas"]["Game"];
         };
         ErrorCode: "GameNotFound" | "GameFull" | "PlayerNotFound" | "PlayerAlreadyExists" | "InvalidGameCode" | "PlayerAlreadyInGame" | {
@@ -139,6 +140,7 @@ export interface components {
             username: string;
         };
         JoinGameResponse: {
+            auth_token: string;
             game: components["schemas"]["Game"];
         };
         Player: {

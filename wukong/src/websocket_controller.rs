@@ -10,6 +10,7 @@ use futures::{StreamExt, SinkExt};
 use crate::game::game_manager::GameManager;
 use crate::game::messages::WebSocketMessage;
 use crate::game::messages::GameMessage::PlayerLeft;
+use crate::game::messages::client_safe_ws_message;
 
 #[utoipa::path(
     get,
@@ -45,10 +46,11 @@ async fn handle_socket(
     let (mut ws_sender, mut ws_receiver) = socket.split();
     let mut broadcast_rx = broadcaster.subscribe();
 
+    let player_id_for_send = player_id.clone();
     let send_task = tokio::spawn(async move {
         while let Ok(message_json) = broadcast_rx.recv().await {
-            if ws_sender.send(Message::Text(message_json.into())).await.is_err() {
-                break;
+            if ws_sender.send(Message::Text(message_json.clone().into())).await.is_err() {
+                println!("[WS:: Error sending message to player {}: {}]", player_id_for_send, message_json);
             }
         }
     });
@@ -69,6 +71,20 @@ async fn handle_socket(
                                     continue;
                                 }
                                 
+                                if let Some(auth_token) = &ws_message.auth_token {
+                                    match game_manager.is_authorized(&player_id, auth_token).await {
+                                        Ok(false) => {
+                                            println!("[WS:: Unauthorized message from player {}]", player_id);
+                                            continue;
+                                        }
+                                        Err(e) => {
+                                            println!("[WS:: Error checking authorization: {}]", e);
+                                            continue;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                
                                 match &ws_message.message {
                                     PlayerLeft { player_id, .. } => {
                                         if let Err(e) = game_manager.handle_player_left(&game_id, player_id).await {
@@ -76,16 +92,9 @@ async fn handle_socket(
                                         }
                                     }
                                     _ => {
-                                        match serde_json::to_string(&ws_message) {
-                                            Ok(message_json) => {
-                                                if let Err(e) = game_manager.broadcast_to_game(&game_id, message_json).await {
-                                                    println!("[WS] Error broadcasting message: {}", e);
-                                                    break;
-                                                }
-                                            }
-                                            Err(e) => {
-                                                println!("[WS:: Error serializing message: {}]", e);
-                                            }
+                                        let client_safe_ws_message = client_safe_ws_message(ws_message);
+                                        if let Err(e) = game_manager.broadcast_to_game(&game_id, client_safe_ws_message).await {
+                                            println!("[WS] Error broadcasting message: {}", e);
                                         }
                                     }
                                 }

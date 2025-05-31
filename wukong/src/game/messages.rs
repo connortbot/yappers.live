@@ -17,4 +17,15 @@ pub enum GameMessage {
 pub struct WebSocketMessage {
     pub game_id: String,
     pub message: GameMessage,
+    pub player_id: String,
+    pub auth_token: Option<String>,
+}
+
+pub fn client_safe_ws_message(ws_message: WebSocketMessage) -> WebSocketMessage {
+    WebSocketMessage {
+        game_id: ws_message.game_id,
+        message: ws_message.message,
+        player_id: ws_message.player_id,
+        auth_token: None,
+    }
 }

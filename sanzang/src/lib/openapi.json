@@ -235,9 +235,13 @@
       "CreateGameResponse": {
         "type": "object",
         "required": [
-          "game"
+          "game",
+          "auth_token"
         ],
         "properties": {
+          "auth_token": {
+            "type": "string"
+          },
           "game": {
             "$ref": "#/components/schemas/Game"
           }
@@ -400,9 +404,13 @@
       "JoinGameResponse": {
         "type": "object",
         "required": [
-          "game"
+          "game",
+          "auth_token"
         ],
         "properties": {
+          "auth_token": {
+            "type": "string"
+          },
           "game": {
             "$ref": "#/components/schemas/Game"
           }
