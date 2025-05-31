@@ -6,4 +6,4 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - BRUH=bruh
+      - WUKONG_ADMIN_PASSWORD=bruh

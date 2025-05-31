@@ -5,6 +5,7 @@ import "./globals.css";
 import Home from "./Home";
 import Lobby from "./pages/Lobby";
 import Admin from "./pages/Admin";
+import TeamDraft from "./pages/TeamDraft";
 
 const root = document.getElementById("root");
 ReactDOM.createRoot(root!).render(
@@ -14,6 +15,7 @@ ReactDOM.createRoot(root!).render(
         <Route path="/" element={<Home />} />
         <Route path="/lobby/:mode" element={<Lobby />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/team_draft" element={<TeamDraft />} />
       </Routes>
     </BrowserRouter>
   </GameProvider>

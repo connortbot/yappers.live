@@ -1,5 +1,21 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use crate::team_draft::messages::TeamDraftMessage;
+use crate::team_draft::state::TeamDraftManager;
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "type")]
+pub enum GameMode {
+    TeamDraft,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct GameStartedMessage {
+    pub game_type: GameMode,
+    pub initial_team_draft_state: Option<TeamDraftManager>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -8,8 +24,10 @@ pub enum GameMessage {
     PlayerJoined { username: String, player_id: String },
     PlayerLeft { username: String, player_id: String },
     PlayerDisconnected { username: String, player_id: String },
-    GameStarted { game_type: String },
+    GameStarted(GameStartedMessage),
     ChatMessage { username: String, message: String },
+    
+    TeamDraft(TeamDraftMessage),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

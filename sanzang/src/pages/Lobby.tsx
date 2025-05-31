@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { Button } from '../components/Button'
 import { Screen } from '../components/Screen'
@@ -10,6 +10,8 @@ import { PlayerList } from '../components/PlayerList'
 import { ChatBox } from '../components/ChatBox'
 import { useGameContext } from '../context/GameContext'
 import type { Player } from '../lib/bindings/Player'
+import type { GameMode } from '../lib/bindings/GameMode'
+import { GameStartedMessage } from '../lib/bindings/GameStartedMessage'
 
 export default function Lobby() {
   const { mode } = useParams<{ mode: 'create' | 'join' }>()
@@ -20,6 +22,7 @@ export default function Lobby() {
     username,
     connected,
     messages,
+    latestEvent,
     loading,
     error,
     createGame,
@@ -60,6 +63,32 @@ export default function Lobby() {
   const handleBackToHome = () => {
     navigate('/')
   }
+
+  const handleStartGame = () => {
+    const gameStartMessage = {
+      type: 'GameStarted' as const,
+      game_type: { type: 'TeamDraft' } as GameMode,
+      initial_team_draft_state: null,
+    }
+    sendMessage(gameStartMessage)
+  }
+
+  useEffect(() => {
+    if (latestEvent) {
+      console.log(latestEvent)
+      
+      if (latestEvent.type === 'GameStarted') {
+        const gameStartedEvent = latestEvent as GameStartedMessage
+        switch (gameStartedEvent.game_type.type) {
+          case 'TeamDraft':
+            navigate('/team_draft')
+            break
+          default:
+            console.warn('Unknown game type:', gameStartedEvent.game_type.type)
+        }
+      }
+    }
+  }, [latestEvent, navigate])
 
   return (
     <Screen>
@@ -176,6 +205,19 @@ export default function Lobby() {
             currentPlayerId={playerId || ''}
             maxPlayers={game.max_players}
           />
+          
+          {playerId === game.host_id && (
+            <div className="mt-4 pt-4">
+              <Button
+                variant="primary"
+                size="large"
+                onMouseUp={handleStartGame}
+                className="w-full text-lg sm:text-xl py-3"
+              >
+                Start Game
+              </Button>
+            </div>
+          )}
         </Section>
       )}
 

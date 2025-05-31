@@ -10,6 +10,7 @@ use serde_json;
 use utoipa::ToSchema;
 use serde::Deserialize;
 use ts_rs::TS;
+use crate::team_draft::state::TeamDraftManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
 #[ts(export)]
@@ -28,6 +29,9 @@ pub struct Game {
     pub players: Vec<Player>,
     pub max_players: u8,
     pub created_at: i32,
+    
+    // Game mode managers
+    pub team_draft: TeamDraftManager,
 }
 
 pub struct GameEntry {
@@ -102,6 +106,11 @@ impl GameManager {
             players: vec![host],
             max_players: 8,
             created_at: chrono::Utc::now().timestamp() as i32,
+            team_draft: TeamDraftManager::new(
+                host_id.clone(),
+                0,
+                8,
+            ),
         };
 
         let mut games = self.games.write().await;

@@ -327,7 +327,8 @@
           "host_id",
           "players",
           "max_players",
-          "created_at"
+          "created_at",
+          "team_draft"
         ],
         "properties": {
           "code": {
@@ -353,6 +354,9 @@
             "items": {
               "$ref": "#/components/schemas/Player"
             }
+          },
+          "team_draft": {
+            "$ref": "#/components/schemas/TeamDraftManager"
           }
         }
       },
@@ -430,6 +434,96 @@
             "type": "string"
           }
         }
+      },
+      "Round": {
+        "type": "object",
+        "required": [
+          "pool",
+          "competition",
+          "team_size",
+          "player_to_picks"
+        ],
+        "properties": {
+          "competition": {
+            "type": "string"
+          },
+          "player_to_picks": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "pool": {
+            "type": "string"
+          },
+          "team_size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "TeamDraftManager": {
+        "type": "object",
+        "required": [
+          "yapper_id",
+          "yapper_index",
+          "max_rounds",
+          "phase",
+          "round_data",
+          "turn_player_id",
+          "player_points"
+        ],
+        "properties": {
+          "max_rounds": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "phase": {
+            "$ref": "#/components/schemas/TeamDraftPhase"
+          },
+          "player_points": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "round_data": {
+            "$ref": "#/components/schemas/Round"
+          },
+          "turn_player_id": {
+            "type": "string"
+          },
+          "yapper_id": {
+            "type": "string"
+          },
+          "yapper_index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "TeamDraftPhase": {
+        "type": "string",
+        "enum": [
+          "YapperChoosing",
+          "Drafting",
+          "Awarding",
+          "Complete"
+        ]
       }
     }
   }

@@ -127,6 +127,7 @@ export interface components {
             /** Format: int32 */
             max_players: number;
             players: components["schemas"]["Player"][];
+            team_draft: components["schemas"]["TeamDraftManager"];
         };
         GameDetailsResponse: {
             game: components["schemas"]["Game"];
@@ -147,6 +148,30 @@ export interface components {
             id: string;
             username: string;
         };
+        Round: {
+            competition: string;
+            player_to_picks: {
+                [key: string]: string[];
+            };
+            pool: string;
+            /** Format: int32 */
+            team_size: number;
+        };
+        TeamDraftManager: {
+            /** Format: int32 */
+            max_rounds: number;
+            phase: components["schemas"]["TeamDraftPhase"];
+            player_points: {
+                [key: string]: number;
+            };
+            round_data: components["schemas"]["Round"];
+            turn_player_id: string;
+            yapper_id: string;
+            /** Format: int32 */
+            yapper_index: number;
+        };
+        /** @enum {string} */
+        TeamDraftPhase: "YapperChoosing" | "Drafting" | "Awarding" | "Complete";
     };
     responses: never;
     parameters: never;

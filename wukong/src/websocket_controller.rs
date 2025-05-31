@@ -9,8 +9,8 @@ use axum::extract::ws::{WebSocket, Message};
 use futures::{StreamExt, SinkExt};
 use crate::game::game_manager::GameManager;
 use crate::game::messages::WebSocketMessage;
-use crate::game::messages::GameMessage::PlayerLeft;
-use crate::game::messages::client_safe_ws_message;
+use crate::game::messages::GameMessage::{PlayerLeft, TeamDraft, GameStarted};
+use crate::game::messages::{client_safe_ws_message, GameMode, GameStartedMessage};
 
 #[utoipa::path(
     get,
@@ -89,6 +89,72 @@ async fn handle_socket(
                                     PlayerLeft { player_id, .. } => {
                                         if let Err(e) = game_manager.handle_player_left(&game_id, player_id).await {
                                             println!("[WS] Error handling player left: {}", e);
+                                        }
+                                    }
+                                    GameStarted(game_started_msg) => {
+                                        let updated_ws_message = match &game_started_msg.game_type {
+                                            GameMode::TeamDraft => {
+                                                if let Ok(Some(mut game)) = game_manager.get_game(&game_id).await {
+                                                    let num_players = game.players.len() as u8;
+                                                    game.team_draft.set_game_settings(num_players);
+                                                    println!("[WS] Started TeamDraft game with {} players", num_players);
+                                                    
+                                                    WebSocketMessage {
+                                                        game_id: ws_message.game_id.clone(),
+                                                        message: GameStarted(GameStartedMessage {
+                                                            game_type: GameMode::TeamDraft,
+                                                            initial_team_draft_state: Some(game.team_draft.clone()),
+                                                        }),
+                                                        player_id: ws_message.player_id.clone(),
+                                                        auth_token: None,
+                                                    }
+                                                } else {
+                                                    client_safe_ws_message(ws_message)
+                                                }
+                                            }
+                                        };
+                                        
+                                        if let Err(e) = game_manager.broadcast_to_game(&game_id, updated_ws_message).await {
+                                            println!("[WS] Error broadcasting game start message: {}", e);
+                                        }
+                                    }
+                                    TeamDraft(team_draft_message) => {
+                                        if let Some(auth_token) = &ws_message.auth_token {
+                                            if let Ok(Some(mut game)) = game_manager.get_game(&game_id).await {
+                                                let required_player_id = game.team_draft.get_correct_player_source_id(team_draft_message.clone());
+                                                
+                                                match game_manager.is_authorized(&required_player_id, auth_token).await {
+                                                    Ok(true) => {
+                                                        if let Some(source_player) = game.players.iter().find(|p| p.id == required_player_id).cloned() {
+                                                            let broadcast_messages = game.team_draft.handle_message(source_player, team_draft_message.clone());
+                                                            for game_message in broadcast_messages {
+                                                                let broadcast_ws_message = WebSocketMessage {
+                                                                    game_id: game_id.clone(),
+                                                                    message: game_message,
+                                                                    player_id: required_player_id.clone(),
+                                                                    auth_token: None,
+                                                                };
+                                                                
+                                                                if let Err(e) = game_manager.broadcast_to_game(&game_id, broadcast_ws_message).await {
+                                                                    println!("[WS] Error broadcasting team draft message: {}", e);
+                                                                }
+                                                            }
+                                                        } else {
+                                                            println!("[WS] Required player {} not found in game", required_player_id);
+                                                        }
+                                                    }
+                                                    Ok(false) => {
+                                                        println!("[WS] Player {} not authorized for team draft action", required_player_id);
+                                                    }
+                                                    Err(e) => {
+                                                        println!("[WS] Error checking authorization for team draft: {}", e);
+                                                    }
+                                                }
+                                            } else {
+                                                println!("[WS] Game {} not found for team draft message", game_id);
+                                            }
+                                        } else {
+                                            println!("[WS] No auth token provided for team draft message");
                                         }
                                     }
                                     _ => {

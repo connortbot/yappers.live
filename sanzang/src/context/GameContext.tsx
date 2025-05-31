@@ -4,7 +4,9 @@ import type { Game } from '../lib/bindings/Game'
 import type { Player } from '../lib/bindings/Player'
 import type { WebSocketMessage } from '../lib/bindings/WebSocketMessage'
 import type { GameMessage } from '../lib/bindings/GameMessage'
+import type { TeamDraftManager } from '../lib/bindings/TeamDraftManager'
 import { createWukongWebSocket } from '../lib/wukongClient'
+import { GameStartedMessage } from '../lib/bindings/GameStartedMessage'
 
 interface GameContextState {
   game: Game | null
@@ -16,6 +18,10 @@ interface GameContextState {
   connecting: boolean
   
   messages: string[]
+  latestEvent: GameMessage | null
+  
+  // Game mode states
+  teamDraftState: TeamDraftManager | null
   
   loading: boolean
   error: string | null
@@ -54,6 +60,9 @@ export function GameProvider({ children }: GameProviderProps) {
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [messages, setMessages] = useState<string[]>([])
+  const [latestEvent, setLatestEvent] = useState<GameMessage | null>(null)
+  
+  const [teamDraftState, setTeamDraftState] = useState<TeamDraftManager | null>(null)
   
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -115,7 +124,13 @@ export function GameProvider({ children }: GameProviderProps) {
         break
         
       case 'GameStarted':
-        setMessages(prev => [...prev, `🎮 Game started: ${message.game_type}`])
+        setLatestEvent(message)
+        setMessages(prev => [...prev, `🎮 Game started: ${(message as GameStartedMessage).game_type.type}`])
+        
+        const gameStartedMessage = message as GameStartedMessage
+        if (gameStartedMessage.game_type.type === 'TeamDraft' && gameStartedMessage.initial_team_draft_state) {
+          setTeamDraftState(gameStartedMessage.initial_team_draft_state)
+        }
         break
         
       default:
@@ -301,7 +316,9 @@ export function GameProvider({ children }: GameProviderProps) {
     connected,
     connecting,
     messages,
+    teamDraftState,
     loading,
+    latestEvent,
     error,
     createGame,
     joinGame,
