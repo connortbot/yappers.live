@@ -4,6 +4,7 @@ import { GameProvider } from "./context/GameContext";
 import "./globals.css";
 import Home from "./Home";
 import Lobby from "./pages/Lobby";
+import Admin from "./pages/Admin";
 
 const root = document.getElementById("root");
 ReactDOM.createRoot(root!).render(
@@ -12,6 +13,7 @@ ReactDOM.createRoot(root!).render(
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/lobby/:mode" element={<Lobby />} />
+        <Route path="/admin" element={<Admin />} />
       </Routes>
     </BrowserRouter>
   </GameProvider>

@@ -52,6 +52,8 @@ async fn ping() -> &'static str {
 
 #[tokio::main]
 async fn main() {
+    dotenv::dotenv().ok();
+
     let game_manager = Arc::new(GameManager::new());
 
     let cors = CorsLayer::new()

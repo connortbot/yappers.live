@@ -58,80 +58,6 @@ export function GameProvider({ children }: GameProviderProps) {
   
   const wsRef = useRef<WebSocket | null>(null)
 
-  const createGame = useCallback(async (usernameInput: string) => {
-    if (!usernameInput.trim()) {
-      setError('Please enter a username')
-      return
-    }
-    
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const result = await createGameAPI({ username: usernameInput.trim() })
-      
-      if (result.error) {
-        setError(result.error.message || 'Failed to create game')
-        return
-      }
-      
-      if (result.data) {
-        const data = result.data
-        const trimmedUsername = usernameInput.trim()
-        setGame(data.game)
-        setUsername(trimmedUsername)
-        const hostPlayer = data.game.players.find((p: Player) => p.username === trimmedUsername)
-        setPlayerId(hostPlayer?.id || trimmedUsername)
-      }
-    } catch (error) {
-      console.error('Error creating game:', error)
-      setError('Failed to create game. Please try again.')
-    } finally {
-      setLoading(false)
-    }
-  }, [createGameAPI])
-
-  const joinGame = useCallback(async (usernameInput: string, gameCode: string) => {
-    if (!usernameInput.trim()) {
-      setError('Please enter a username')
-      return
-    }
-    
-    if (!gameCode.trim()) {
-      setError('Please enter a game code')
-      return
-    }
-    
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const result = await joinGameAPI({ 
-        username: usernameInput.trim(), 
-        game_code: gameCode.trim() 
-      })
-      
-      if (result.error) {
-        setError(result.error.message || 'Failed to join game')
-        return
-      }
-      
-      if (result.data) {
-        const data = result.data
-        const trimmedUsername = usernameInput.trim()
-        setGame(data.game)
-        setUsername(trimmedUsername)
-        const joinedPlayer = data.game.players.find((p: Player) => p.username === trimmedUsername)
-        setPlayerId(joinedPlayer?.id || trimmedUsername)
-      }
-    } catch (error) {
-      console.error('Error joining game:', error)
-      setError('Failed to join game. Please try again.')
-    } finally {
-      setLoading(false)
-    }
-  }, [joinGameAPI])
-
   const handleGameMessage = useCallback((message: GameMessage) => {
     switch (message.type) {
       case 'PlayerJoined':
@@ -195,13 +121,13 @@ export function GameProvider({ children }: GameProviderProps) {
     }
   }, [])
 
-  const connectWebSocket = useCallback(() => {
-    if (!game?.id || !playerId || connected || connecting) return
+  const connectWebSocketWithGameData = useCallback((gameData: Game, playerIdData: string) => {
+    if (connected || connecting) return
     
     setConnecting(true)
     setError(null)
     
-    const ws = createWukongWebSocket(`${game.id}/${playerId}`)
+    const ws = createWukongWebSocket(`${gameData.id}/${playerIdData}`)
     
     ws.onopen = () => {
       console.log('Connected to websocket')
@@ -233,7 +159,95 @@ export function GameProvider({ children }: GameProviderProps) {
     }
 
     wsRef.current = ws
-  }, [game?.id, playerId, connected, connecting, handleGameMessage])
+  }, [connected, connecting, handleGameMessage])
+
+  const connectWebSocket = useCallback(() => {
+    if (!game?.id || !playerId || connected || connecting) return
+    
+    connectWebSocketWithGameData(game, playerId)
+  }, [game?.id, playerId, connected, connecting, connectWebSocketWithGameData])
+
+  const createGame = useCallback(async (usernameInput: string) => {
+    if (!usernameInput.trim()) {
+      setError('Please enter a username')
+      return
+    }
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const result = await createGameAPI({ username: usernameInput.trim() })
+      
+      if (result.error) {
+        setError(result.error.message || 'Failed to create game')
+        return
+      }
+      
+      if (result.data) {
+        const data = result.data
+        const trimmedUsername = usernameInput.trim()
+        const hostPlayer = data.game.players.find((p: Player) => p.username === trimmedUsername)
+        const hostPlayerId = hostPlayer?.id || trimmedUsername
+        
+        setGame(data.game)
+        setUsername(trimmedUsername)
+        setPlayerId(hostPlayerId)
+        
+        connectWebSocketWithGameData(data.game, hostPlayerId)
+      }
+    } catch (error) {
+      console.error('Error creating game:', error)
+      setError('Failed to create game. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }, [createGameAPI, connectWebSocketWithGameData])
+
+  const joinGame = useCallback(async (usernameInput: string, gameCode: string) => {
+    if (!usernameInput.trim()) {
+      setError('Please enter a username')
+      return
+    }
+    
+    if (!gameCode.trim()) {
+      setError('Please enter a game code')
+      return
+    }
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const result = await joinGameAPI({ 
+        username: usernameInput.trim(), 
+        game_code: gameCode.trim() 
+      })
+      
+      if (result.error) {
+        setError(result.error.message || 'Failed to join game')
+        return
+      }
+      
+      if (result.data) {
+        const data = result.data
+        const trimmedUsername = usernameInput.trim()
+        const joinedPlayer = data.game.players.find((p: Player) => p.username === trimmedUsername)
+        const joinedPlayerId = joinedPlayer?.id || trimmedUsername
+        
+        setGame(data.game)
+        setUsername(trimmedUsername)
+        setPlayerId(joinedPlayerId)
+        
+        connectWebSocketWithGameData(data.game, joinedPlayerId)
+      }
+    } catch (error) {
+      console.error('Error joining game:', error)
+      setError('Failed to join game. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }, [joinGameAPI, connectWebSocketWithGameData])
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {
@@ -244,6 +258,22 @@ export function GameProvider({ children }: GameProviderProps) {
       setMessages([])
     }
   }, [])
+
+  const disconnectSync = useCallback(() => {
+    if (game?.id && playerId && username) {
+      sendMessage({
+        game_id: game.id,
+        message: {
+          type: 'PlayerLeft',
+          username: username,
+          player_id: playerId
+        }
+      })
+    }
+    disconnect(); 
+  }, [])
+
+  
 
   const sendMessage = useCallback((message: WebSocketMessage) => {
     if (wsRef.current && message) {
@@ -265,12 +295,19 @@ export function GameProvider({ children }: GameProviderProps) {
   }, [disconnect])
 
   useEffect(() => {
+    const handleBeforeUnload = () => {
+      disconnectSync()
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
       if (wsRef.current) {
         wsRef.current.close()
       }
     }
-  }, [])
+  }, [disconnectSync])
 
   const contextValue: GameContextState = {
     game,

@@ -46,7 +46,7 @@ impl GameManager {
     }
 
     fn generate_game_code(&self) -> String {
-        const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        const CHARS: &[u8] = b"ABCDEFGHIJKLMNPQRSTUVWXYZ123456789"; // no O or 0
         let mut rng = rng();
         
         (0..6)

@@ -24,7 +24,6 @@ export default function Lobby() {
     error,
     createGame,
     joinGame,
-    connectWebSocket,
     sendMessage,
     clearError,
     leaveGame
@@ -36,16 +35,10 @@ export default function Lobby() {
 
   const handleCreateGame = async () => {
     await createGame(localUsername)
-    setTimeout(() => {
-      connectWebSocket()
-    }, 100)
   }
 
   const handleJoinGame = async () => {
     await joinGame(joinUsername, joinGameCode)
-    setTimeout(() => {
-      connectWebSocket()
-    }, 100)
   }
 
   const handleLeaveGame = () => {

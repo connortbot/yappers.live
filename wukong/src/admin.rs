@@ -35,18 +35,27 @@ pub async fn admin_auth_middleware(
     next: Next,
 ) -> Result<Response, StatusCode> {
     let admin_password = std::env::var("WUKONG_ADMIN_PASSWORD")
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| {
+            println!("[Admin] WUKONG_ADMIN_PASSWORD environment variable not set");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let auth_header = request
         .headers()
-        .get("WukongAdminPassword")
+        .get("Wukong-Admin")
         .and_then(|h| h.to_str().ok());
 
+    println!("[Admin] Auth header present: {}", auth_header.is_some());
+    
     match auth_header {
         Some(password) if password == admin_password => {
+            println!("[Admin] Authentication successful");
             Ok(next.run(request).await)
         }
-        _ => Err(StatusCode::UNAUTHORIZED)
+        _ => {
+            println!("[Admin] Authentication failed");
+            Err(StatusCode::UNAUTHORIZED)
+        }
     }
 }
 
