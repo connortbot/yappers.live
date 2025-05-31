@@ -208,14 +208,30 @@ export default function Lobby() {
           
           {playerId === game.host_id && (
             <div className="mt-4 pt-4">
-              <Button
-                variant="primary"
-                size="large"
-                onMouseUp={handleStartGame}
-                className="w-full text-lg sm:text-xl py-3"
-              >
-                Start Game
-              </Button>
+              {game.players.length < 3 ? (
+                <div className="text-center">
+                  <p className="text-pencil font-secondary text-sm mb-2">
+                    Need at least 3 players to start the game
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="large"
+                    disabled={true}
+                    className="w-full text-lg sm:text-xl py-3 opacity-50 cursor-not-allowed"
+                  >
+                    Start Game (Need {3 - game.players.length} more player{3 - game.players.length !== 1 ? 's' : ''})
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="large"
+                  onMouseUp={handleStartGame}
+                  className="w-full text-lg sm:text-xl py-3"
+                >
+                  Start Game
+                </Button>
+              )}
             </div>
           )}
         </Section>

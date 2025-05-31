@@ -36,10 +36,6 @@ export default function TeamDraft() {
     }, 100)
   }
 
-  const handleBackToLobby = () => {
-    navigate('/lobby/join')
-  }
-
   if (!game || !teamDraftState) {
     return (
       <Screen>
@@ -63,14 +59,6 @@ export default function TeamDraft() {
   return (
     <Screen>
       <div className="flex justify-between items-center mb-6 sm:mb-8">
-        <Button
-          variant="secondary"
-          size="small"
-          onMouseUp={handleBackToLobby}
-          className="text-xs sm:text-sm"
-        >
-          ← Back to Lobby
-        </Button>
         
         <Button
           variant="secondary"
