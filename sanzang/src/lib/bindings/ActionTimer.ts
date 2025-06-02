@@ -2,4 +2,4 @@
 import type { GameMessage } from "./GameMessage";
 import type { TimerReason } from "./TimerReason";
 
-export type TurnTimer = { duration_seconds: bigint, action_key: string, default_action: GameMessage, reason: TimerReason, };
+export type ActionTimer = { duration_seconds: bigint, action_key: string, default_action: GameMessage, reason: TimerReason, };

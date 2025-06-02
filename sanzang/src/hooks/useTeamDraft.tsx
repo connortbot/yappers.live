@@ -37,6 +37,9 @@ export function useTeamDraft() {
               current_drafter_id: message.starting_drafter_id
             }
             break
+          case 'NextDrafter':
+            updated.round_data.current_drafter_id = message.drafter_id
+            break
         }
         
         return updated

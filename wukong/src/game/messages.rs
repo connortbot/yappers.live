@@ -26,7 +26,7 @@ pub struct HaltTimer {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct TurnTimer {
+pub struct ActionTimer {
     pub duration_seconds: u64,
     pub action_key: String,
     pub default_action: Box<GameMessage>,
@@ -50,7 +50,7 @@ pub enum GameMessage {
     ChatMessage { username: String, message: String },
     
     HaltTimer(HaltTimer),
-    TurnTimer(TurnTimer),
+    ActionTimer(ActionTimer),
     
     TeamDraft(TeamDraftMessage),
 }

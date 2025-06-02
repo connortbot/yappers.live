@@ -7,6 +7,7 @@ use ts_rs::TS;
 pub enum TeamDraftTimerReason {
     YapperStartingDraft,
     DraftPickShowcase,
+    WaitingForDraftPick,
     TransitionToAwarding,
     PlayerTurnTimeout,
 }

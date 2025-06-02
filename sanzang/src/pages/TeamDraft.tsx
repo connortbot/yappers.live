@@ -137,7 +137,7 @@ export default function TeamDraft() {
             break
           case 'NextDrafter':
             setCurrentPick('')
-            setCurrentPickDrafter('')
+            setCurrentPickDrafter(latestEvent.drafter_id)
             break
         }
       } else if (latestEvent.type === 'HaltTimer') {
@@ -148,6 +148,11 @@ export default function TeamDraft() {
         } else if (latestEvent.reason?.TeamDraft === 'DraftPickShowcase') {
           setTimerMessage('Next drafter in...')
         } else {}
+        setTimeLeft(Number(latestEvent.duration_seconds))
+      } else if (latestEvent.type === 'ActionTimer') {
+        if (latestEvent.reason?.TeamDraft === 'WaitingForDraftPick') {
+          setTimerMessage('Time to pick...')
+        }
         setTimeLeft(Number(latestEvent.duration_seconds))
       }
     }

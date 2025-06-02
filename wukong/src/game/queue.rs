@@ -91,12 +91,19 @@ impl GameProcessor {
             TeamDraft(team_draft_message) => {
                 println!("[GameProcessor] Processing TeamDraft message: {:?}", team_draft_message);
                 if let Some(auth_token) = &ws_message.auth_token {
-                    let required_player_id = if let Ok(Some(game)) = game_manager.get_game(game_id).await {
-                        game.team_draft.get_correct_player_source_id(team_draft_message.clone())
+                    let (required_player_id, requires_action_key) = if let Ok(Some(game)) = game_manager.get_game(game_id).await {
+                        let required_id = game.team_draft.get_correct_player_source_id(team_draft_message.clone());
+                        let requires_key = game.team_draft.requires_action_key(team_draft_message.clone());
+                        (required_id, requires_key)
                     } else {
                         println!("[GameProcessor] Game {} not found for team draft message", game_id);
                         return Ok(());
                     };
+                    
+                    if requires_action_key && ws_message.action_key.is_none() {
+                        println!("[GameProcessor] Action key required but not provided for message: {:?}", team_draft_message);
+                        return Ok(());
+                    }
                     
                     match game_manager.is_authorized(&required_player_id, auth_token).await {
                         Ok(true) => {
@@ -178,12 +185,12 @@ impl GameProcessor {
                     println!("[GameProcessor] Halting for {} seconds", halt_timer.duration_seconds);
                     tokio::time::sleep(tokio::time::Duration::from_secs(halt_timer.duration_seconds)).await;
                 }
-                GameMessage::TurnTimer(turn_timer) => {
+                GameMessage::ActionTimer(turn_timer) => {
                     let action_key = game_manager.modify_game(game_id, |game| {
                         game.team_draft.action_timer_manager.generate_action_key(game_id)
                     }).await?;
                     
-                    let turn_timer_with_key = crate::game::messages::TurnTimer {
+                    let turn_timer_with_key = crate::game::messages::ActionTimer {
                         duration_seconds: turn_timer.duration_seconds,
                         action_key: action_key.clone(),
                         default_action: turn_timer.default_action.clone(),
@@ -192,7 +199,7 @@ impl GameProcessor {
                     
                     let turn_timer_ws_message = WebSocketMessage {
                         game_id: game_id.to_string(),
-                        message: GameMessage::TurnTimer(turn_timer_with_key),
+                        message: GameMessage::ActionTimer(turn_timer_with_key),
                         player_id: player_id.to_string(),
                         auth_token: None,
                         action_key: None,
