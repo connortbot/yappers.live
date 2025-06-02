@@ -9,8 +9,6 @@ use axum::extract::ws::{WebSocket, Message};
 use futures::{StreamExt, SinkExt};
 use crate::game::game_manager::GameManager;
 use crate::game::messages::WebSocketMessage;
-use crate::game::messages::GameMessage::{PlayerLeft, TeamDraft, GameStarted};
-use crate::game::messages::{client_safe_ws_message, GameMode, GameStartedMessage};
 
 #[utoipa::path(
     get,
@@ -72,6 +70,11 @@ async fn handle_socket(
                                 }
                                 
                                 if let Some(auth_token) = &ws_message.auth_token {
+                                    if auth_token == crate::team_draft::state::SERVER_ONLY_AUTHORIZED {
+                                        println!("[WS:: SECURITY: Client attempted to use server-only auth token from player {}]", player_id);
+                                        continue;
+                                    }
+                                    
                                     match game_manager.is_authorized(&player_id, auth_token).await {
                                         Ok(false) => {
                                             println!("[WS:: Unauthorized message from player {}]", player_id);
@@ -85,96 +88,8 @@ async fn handle_socket(
                                     }
                                 }
                                 
-                                match &ws_message.message {
-                                    PlayerLeft { player_id, .. } => {
-                                        if let Err(e) = game_manager.handle_player_left(&game_id, player_id).await {
-                                            println!("[WS] Error handling player left: {}", e);
-                                        }
-                                    }
-                                    GameStarted(game_started_msg) => {
-                                        let updated_ws_message = match &game_started_msg.game_type {
-                                            GameMode::TeamDraft => {
-                                                match game_manager.modify_game(&game_id, |game| {
-                                                    let num_players = game.players.len() as u8;
-                                                    game.team_draft.set_game_settings(num_players);
-                                                    println!("[WS] Started TeamDraft game with {} players", num_players);
-                                                    game.team_draft.clone()
-                                                }).await {
-                                                    Ok(updated_team_draft_state) => {
-                                                        WebSocketMessage {
-                                                            game_id: ws_message.game_id.clone(),
-                                                            message: GameStarted(GameStartedMessage {
-                                                                game_type: GameMode::TeamDraft,
-                                                                initial_team_draft_state: Some(updated_team_draft_state),
-                                                            }),
-                                                            player_id: ws_message.player_id.clone(),
-                                                            auth_token: None,
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        println!("[WS] Error modifying game for GameStarted: {}", e);
-                                                        client_safe_ws_message(ws_message)
-                                                    }
-                                                }
-                                            }
-                                        };
-                                        
-                                        if let Err(e) = game_manager.broadcast_to_game(&game_id, updated_ws_message).await {
-                                            println!("[WS] Error broadcasting game start message: {}", e);
-                                        }
-                                    }
-                                    TeamDraft(team_draft_message) => {
-                                        if let Some(auth_token) = &ws_message.auth_token {
-                                            let required_player_id = if let Ok(Some(game)) = game_manager.get_game(&game_id).await {
-                                                game.team_draft.get_correct_player_source_id(team_draft_message.clone())
-                                            } else {
-                                                println!("[WS] Game {} not found for team draft message", game_id);
-                                                continue;
-                                            };
-                                            
-                                            match game_manager.is_authorized(&required_player_id, auth_token).await {
-                                                Ok(true) => {
-                                                    match game_manager.modify_game(&game_id, |game| {
-                                                        let players = game.players.clone();
-                                                        Some(game.team_draft.handle_message(players, team_draft_message.clone()))
-                                                    }).await {
-                                                        Ok(Some(broadcast_messages)) => {
-                                                            for game_message in broadcast_messages {
-                                                                let broadcast_ws_message = WebSocketMessage {
-                                                                    game_id: game_id.clone(),
-                                                                    message: game_message,
-                                                                    player_id: required_player_id.clone(),
-                                                                    auth_token: None,
-                                                                };
-                                                                
-                                                                if let Err(e) = game_manager.broadcast_to_game(&game_id, broadcast_ws_message).await {
-                                                                    println!("[WS] Error broadcasting team draft message: {}", e);
-                                                                }
-                                                            }
-                                                        }
-                                                        Ok(None) => {}
-                                                        Err(e) => {
-                                                            println!("[WS] Error modifying game for team draft: {}", e);
-                                                        }
-                                                    }
-                                                }
-                                                Ok(false) => {
-                                                    println!("[WS] Player {} not authorized for team draft action", required_player_id);
-                                                }
-                                                Err(e) => {
-                                                    println!("[WS] Error checking authorization for team draft: {}", e);
-                                                }
-                                            }
-                                        } else {
-                                            println!("[WS] No auth token provided for team draft message");
-                                        }
-                                    }
-                                    _ => {
-                                        let client_safe_ws_message = client_safe_ws_message(ws_message);
-                                        if let Err(e) = game_manager.broadcast_to_game(&game_id, client_safe_ws_message).await {
-                                            println!("[WS] Error broadcasting message: {}", e);
-                                        }
-                                    }
+                                if let Err(e) = GameManager::enqueue_message_with_manager(game_manager.clone(), &game_id, ws_message).await {
+                                    println!("[WS] Error enqueuing message: {}", e);
                                 }
                             }
                             Err(e) => {

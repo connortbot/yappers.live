@@ -80,6 +80,7 @@ export function GameProvider({ children }: GameProviderProps) {
   const [error, setError] = useState<string | null>(null)
   
   const wsRef = useRef<WebSocket | null>(null)
+  const shouldReconnectRef = useRef<boolean>(false)
 
   const handleGameMessage = useCallback((message: GameMessage) => {
     handleTeamDraftMessage(message)
@@ -157,6 +158,7 @@ export function GameProvider({ children }: GameProviderProps) {
     
     setConnecting(true)
     setError(null)
+    shouldReconnectRef.current = true
     
     const ws = createWukongWebSocket(`${gameData.id}/${playerIdData}`)
     
@@ -181,11 +183,11 @@ export function GameProvider({ children }: GameProviderProps) {
       setConnected(false)
       setConnecting(false)
       
-      // Auto-reconnect in development mode if we have game data and it wasn't a manual disconnect
-      if (import.meta.env.DEV && gameData && playerIdData && event.code !== 1000) {
+      // Auto-reconnect in development mode if we should reconnect and it wasn't a manual disconnect
+      if (import.meta.env.DEV && shouldReconnectRef.current && event.code !== 1000) {
         console.log('Attempting to reconnect in 1 second...')
         setTimeout(() => {
-          if (!connected && !connecting) {
+          if (shouldReconnectRef.current && !connected && !connecting) {
             connectWebSocketWithGameData(gameData, playerIdData)
           }
         }, 1000)
@@ -291,6 +293,7 @@ export function GameProvider({ children }: GameProviderProps) {
   }, [joinGameAPI, connectWebSocketWithGameData])
 
   const disconnect = useCallback(() => {
+    shouldReconnectRef.current = false
     if (wsRef.current) {
       wsRef.current.close()
       wsRef.current = null
@@ -316,6 +319,7 @@ export function GameProvider({ children }: GameProviderProps) {
   }, [])
 
   const leaveGame = useCallback(() => {
+    shouldReconnectRef.current = false
     disconnect()
     setGame(null)
     setPlayerId(null)

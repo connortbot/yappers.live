@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use utoipa::ToSchema;
 use ts_rs::TS;
-use crate::game::messages::GameMessage;
-use crate::team_draft::messages::TeamDraftMessage;
+use crate::game::messages::{GameMessage, TimerReason};
+use crate::team_draft::messages::{TeamDraftMessage, TeamDraftTimerReason};
 use crate::game::game_manager::Player;
+use crate::game::action_timer_manager::ActionTimerManager;
 
 pub const SERVER_ONLY_AUTHORIZED: &str = "00000000-0000-0000-0000-000000000000";
 
@@ -48,6 +49,9 @@ pub struct TeamDraftManager {
     // Turn
     pub player_points: HashMap<String, u8>,
 
+    #[serde(skip)]
+    #[ts(skip)]
+    pub action_timer_manager: ActionTimerManager,
 }
 
 impl TeamDraftManager {
@@ -71,6 +75,7 @@ impl TeamDraftManager {
                 current_drafter_id: String::new(),
             },
             player_points: HashMap::new(),
+            action_timer_manager: ActionTimerManager::new(),
         }
     }
 
@@ -127,6 +132,12 @@ impl TeamDraftManager {
                 }
                 
                 vec![
+                    GameMessage::HaltTimer(
+                        crate::game::messages::HaltTimer {
+                            duration_seconds: 3,
+                            reason: TimerReason::TeamDraft(TeamDraftTimerReason::YapperStartingDraft),
+                        }
+                    ),
                     GameMessage::TeamDraft(TeamDraftMessage::StartDraft(start_draft_msg)),
                 ]
             },
@@ -144,6 +155,18 @@ impl TeamDraftManager {
                 
                 if all_teams_complete {
                     self.phase = TeamDraftPhase::Awarding;
+                    messages.push(GameMessage::HaltTimer(
+                        crate::game::messages::HaltTimer {
+                            duration_seconds: 3,
+                            reason: TimerReason::TeamDraft(TeamDraftTimerReason::DraftPickShowcase),
+                        }
+                    ));
+                    messages.push(GameMessage::HaltTimer(
+                        crate::game::messages::HaltTimer {
+                            duration_seconds: 5,
+                            reason: TimerReason::TeamDraft(TeamDraftTimerReason::TransitionToAwarding),
+                        }
+                    ));
                     messages.push(GameMessage::TeamDraft(TeamDraftMessage::AwardingPhase(
                         crate::team_draft::messages::AwardingPhase {}
                     )));
@@ -154,6 +177,13 @@ impl TeamDraftManager {
                             next_index = (next_index + 1) % players.len();
                         }
                         self.round_data.current_drafter_id = players[next_index].id.clone();
+                        
+                        messages.push(GameMessage::HaltTimer(
+                            crate::game::messages::HaltTimer {
+                                duration_seconds: 3,
+                                reason: TimerReason::TeamDraft(TeamDraftTimerReason::DraftPickShowcase),
+                            }
+                        ));
                         messages.push(GameMessage::TeamDraft(TeamDraftMessage::NextDrafter(
                             crate::team_draft::messages::NextDrafter {
                                 drafter_id: self.round_data.current_drafter_id.clone(),
@@ -234,7 +264,7 @@ impl TeamDraftManager {
             TeamDraftMessage::NextDrafter(_) => {
                 // Server-only message, do nothing
                 vec![]
-            }
+            },
         }
     }
 }

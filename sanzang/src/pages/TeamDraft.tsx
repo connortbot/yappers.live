@@ -9,6 +9,9 @@ import { ChatBox } from '../components/ChatBox'
 import { Input } from '../components/Input'
 import { FormRow } from '../components/FormRow'
 import { useGameContext } from '../context/GameContext'
+import { DraftPick } from '../lib/bindings/DraftPick'
+import { TeamDraftMessage } from '../lib/bindings/TeamDraftMessage'
+import { GameMessage } from '../lib/bindings/GameMessage'
 
 export default function TeamDraft() {
   const navigate = useNavigate()
@@ -31,8 +34,30 @@ export default function TeamDraft() {
   const [competitionInput, setCompetitionInput] = useState('')
   const [showPlayerSelection, setShowPlayerSelection] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
+  
+  const [timeLeft, setTimeLeft] = useState(0)
+  const [timerMessage, setTimerMessage] = useState('')
+  
+  const [draftInput, setDraftInput] = useState('')
+  const [currentPick, setCurrentPick] = useState('')
+  const [currentPickDrafter, setCurrentPickDrafter] = useState('')
 
   const isYapper = playerId === teamDraftState?.yapper_id
+
+  useEffect(() => {
+    if (timeLeft > 0) {
+      const timer = setTimeout(() => {
+        setTimeLeft(timeLeft - 1)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [timeLeft, timerMessage])
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
 
   const handlePoolChange = (value: string) => {
     setPoolInput(value)
@@ -64,8 +89,19 @@ export default function TeamDraft() {
     if (selectedPlayerId) {
       const startDraftMessage = createStartDraftMessage(selectedPlayerId)
       sendMessage(startDraftMessage)
-      setShowPlayerSelection(false)
-      setSelectedPlayerId(null)
+    }
+  }
+
+  const handleDraftSubmit = () => {
+    if (draftInput.trim() && playerId) {
+      const draftPickMessage = {
+        type: 'TeamDraft',
+        msg_type: 'DraftPick',
+        drafter_id: playerId,
+        pick: draftInput.trim()
+      } as GameMessage & TeamDraftMessage & DraftPick
+      sendMessage(draftPickMessage)
+      setDraftInput('')
     }
   }
 
@@ -95,7 +131,24 @@ export default function TeamDraft() {
           case 'SetCompetition':
             setCompetitionInput(latestEvent.competition)
             break
+          case 'DraftPick':
+            setCurrentPick(latestEvent.pick)
+            setCurrentPickDrafter(latestEvent.drafter_id)
+            break
+          case 'NextDrafter':
+            setCurrentPick('')
+            setCurrentPickDrafter('')
+            break
         }
+      } else if (latestEvent.type === 'HaltTimer') {
+        if (latestEvent.reason?.TeamDraft === 'YapperStartingDraft') {
+          setTimerMessage('The draft begins in...')
+          setShowPlayerSelection(false)
+          setSelectedPlayerId(null)
+        } else if (latestEvent.reason?.TeamDraft === 'DraftPickShowcase') {
+          setTimerMessage('Next drafter in...')
+        } else {}
+        setTimeLeft(Number(latestEvent.duration_seconds))
       }
     }
   }, [latestEvent])
@@ -124,6 +177,23 @@ export default function TeamDraft() {
           </Button>
         </div>
       </Screen>
+    )
+  }
+
+  const renderTimer = () => {
+    return (
+      <div className="flex items-center justify-center gap-2 mt-6 pt-0">
+        <div className={`text-sm font-secondary text-pencil italic transition-all duration-500 ease-in-out ${
+          (timeLeft > 0) ? 'opacity-100 translate-x-0' : 'opacity-25 translate-x-2'
+        }`}>
+          {timerMessage}
+        </div>
+        <div className={`text-2xl font-primary font-bold text-pencil transition-opacity duration-300 ${
+          timeLeft > 0 ? 'opacity-100' : 'opacity-30'
+        }`}>
+          {formatTime(timeLeft)}
+        </div>
+      </div>
     )
   }
 
@@ -164,6 +234,7 @@ export default function TeamDraft() {
                 </div>
               )}
             </div>
+            {renderTimer()}
           </Section>
         )
       }
@@ -222,6 +293,7 @@ export default function TeamDraft() {
               </Button>
             )}
           </div>
+          {renderTimer()}
         </Section>
       )
     }
@@ -234,16 +306,50 @@ export default function TeamDraft() {
       return (
         <Section title="Drafting Phase">
           <div className="text-center">
-            {isDrafting ? (
-              <p className="text-2xl sm:text-3xl font-bold font-primary text-pencil">
-                I am drafting
-              </p>
+            {currentPick ? (
+              <div className="space-y-2">
+                <p className="font-secondary text-pencil text-base sm:text-lg">
+                  {currentPickDrafter === playerId ? 'You chose:' : `${game.players.find(p => p.id === currentPickDrafter)?.username || 'Someone'} chose:`}
+                </p>
+                <p className="text-2xl sm:text-3xl font-bold font-primary text-pencil">
+                  {currentPick}
+                </p>
+              </div>
+            ) : isDrafting ? (
+              <div className="space-y-4">
+                <p className="font-secondary text-pencil text-base sm:text-lg">
+                  Who/what will you pick?
+                </p>
+                <FormRow>
+                  <Input
+                    type="text"
+                    value={draftInput}
+                    onChange={(e) => setDraftInput(e.target.value)}
+                    placeholder="Enter your pick"
+                    className="flex-1 font-primary"
+                    onKeyUp={(e) => {
+                      if (e.key === 'Enter') {
+                        handleDraftSubmit()
+                      }
+                    }}
+                  />
+                </FormRow>
+                <Button
+                  variant="primary"
+                  size="medium"
+                  onMouseUp={handleDraftSubmit}
+                  disabled={!draftInput.trim()}
+                >
+                  Submit Pick
+                </Button>
+              </div>
             ) : (
               <p className="text-2xl sm:text-3xl font-bold font-primary text-pencil">
                 {currentDrafter?.username || 'Someone'} is thinking!
               </p>
             )}
           </div>
+          {renderTimer()}
         </Section>
       )
     }

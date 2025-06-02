@@ -4,6 +4,15 @@ use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
+pub enum TeamDraftTimerReason {
+    YapperStartingDraft,
+    DraftPickShowcase,
+    TransitionToAwarding,
+    PlayerTurnTimeout,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct SetPoolMessage {
     pub pool: String,
 }

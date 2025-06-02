@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use crate::team_draft::messages::TeamDraftMessage;
+use crate::team_draft::messages::{TeamDraftMessage, TeamDraftTimerReason};
 use crate::team_draft::state::TeamDraftManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -19,6 +19,28 @@ pub struct GameStartedMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
+pub struct HaltTimer {
+    pub duration_seconds: u64,
+    pub reason: TimerReason,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TurnTimer {
+    pub duration_seconds: u64,
+    pub action_key: String,
+    pub default_action: Box<GameMessage>,
+    pub reason: TimerReason,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum TimerReason {
+    TeamDraft(TeamDraftTimerReason),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(tag = "type")]
 pub enum GameMessage {
     PlayerJoined { username: String, player_id: String },
@@ -26,6 +48,9 @@ pub enum GameMessage {
     PlayerDisconnected { username: String, player_id: String },
     GameStarted(GameStartedMessage),
     ChatMessage { username: String, message: String },
+    
+    HaltTimer(HaltTimer),
+    TurnTimer(TurnTimer),
     
     TeamDraft(TeamDraftMessage),
 }
@@ -37,6 +62,7 @@ pub struct WebSocketMessage {
     pub message: GameMessage,
     pub player_id: String,
     pub auth_token: Option<String>,
+    pub action_key: Option<String>,
 }
 
 pub fn client_safe_ws_message(ws_message: WebSocketMessage) -> WebSocketMessage {
@@ -45,5 +71,6 @@ pub fn client_safe_ws_message(ws_message: WebSocketMessage) -> WebSocketMessage 
         message: ws_message.message,
         player_id: ws_message.player_id,
         auth_token: None,
+        action_key: None,
     }
 }
