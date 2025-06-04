@@ -3,7 +3,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use crate::game::messages::{WebSocketMessage, GameMessage, GameMode, GameStartedMessage, client_safe_ws_message};
 use crate::game::game_manager::{GameManager, GameResult};
-use crate::team_draft::messages::TeamDraftMessage;
 
 #[derive(Debug, Clone)]
 pub struct QueuedMessage {
@@ -58,6 +57,7 @@ impl GameProcessor {
                 game_manager.handle_player_left(game_id, player_id).await?;
             }
             GameStarted(game_started_msg) => {
+                let player_id = ws_message.player_id.clone();
                 let updated_ws_message = match &game_started_msg.game_type {
                     GameMode::TeamDraft => {
                         match game_manager.modify_game(game_id, |game| {
@@ -67,16 +67,16 @@ impl GameProcessor {
                             game.team_draft.clone()
                         }).await {
                             Ok(updated_team_draft_state) => {
-                                WebSocketMessage {
+                                let ws_msg = WebSocketMessage {
                                     game_id: ws_message.game_id.clone(),
                                     message: GameStarted(GameStartedMessage {
                                         game_type: GameMode::TeamDraft,
                                         initial_team_draft_state: Some(updated_team_draft_state),
                                     }),
-                                    player_id: ws_message.player_id.clone(),
+                                    player_id: player_id.clone(),
                                     auth_token: None,
-                                    action_key: None,
-                                }
+                                };
+                                ws_msg
                             }
                             Err(e) => {
                                 println!("[GameProcessor] Error modifying game for GameStarted: {}", e);
@@ -86,47 +86,22 @@ impl GameProcessor {
                     }
                 };
                 
-                game_manager.broadcast_to_game(game_id, updated_ws_message).await?;
+                let broadcast_messages = vec![updated_ws_message.message.clone()];
+                Self::process_broadcast_messages(game_id, &player_id, broadcast_messages, game_manager).await?;
             }
             TeamDraft(team_draft_message) => {
                 println!("[GameProcessor] Processing TeamDraft message: {:?}", team_draft_message);
                 if let Some(auth_token) = &ws_message.auth_token {
-                    let (required_player_id, requires_action_key) = if let Ok(Some(game)) = game_manager.get_game(game_id).await {
+                    let required_player_id = if let Ok(Some(game)) = game_manager.get_game(game_id).await {
                         let required_id = game.team_draft.get_correct_player_source_id(team_draft_message.clone());
-                        let requires_key = game.team_draft.requires_action_key(team_draft_message.clone());
-                        (required_id, requires_key)
+                        required_id
                     } else {
                         println!("[GameProcessor] Game {} not found for team draft message", game_id);
                         return Ok(());
                     };
                     
-                    if requires_action_key && ws_message.action_key.is_none() {
-                        println!("[GameProcessor] Action key required but not provided for message: {:?}", team_draft_message);
-                        return Ok(());
-                    }
-                    
                     match game_manager.is_authorized(&required_player_id, auth_token).await {
                         Ok(true) => {
-                            if let Some(action_key) = &ws_message.action_key {
-                                let action_key_valid = match game_manager.modify_game(game_id, |game| {
-                                    if game.team_draft.action_timer_manager.validate_action_key(action_key) {
-                                        game.team_draft.action_timer_manager.consume_action_key(action_key).is_ok()
-                                    } else {
-                                        false
-                                    }
-                                }).await {
-                                    Ok(valid) => valid,
-                                    Err(_) => false,
-                                };
-                                
-                                if !action_key_valid {
-                                    println!("[GameProcessor] Invalid or expired action key: {}", action_key);
-                                    return Ok(());
-                                }
-                                
-                                println!("[GameProcessor] Valid action key used: {}", action_key);
-                            }
-                            
                             match game_manager.modify_game(game_id, |game| {
                                 let players = game.players.clone();
                                 println!("[GameProcessor] Handling team draft message: {:?}", team_draft_message);
@@ -177,45 +152,12 @@ impl GameProcessor {
                         message: game_message.clone(),
                         player_id: player_id.to_string(),
                         auth_token: None,
-                        action_key: None,
                     };
                     
                     game_manager.broadcast_to_game(game_id, broadcast_ws_message).await?;
                     
                     println!("[GameProcessor] Halting for {} seconds", halt_timer.duration_seconds);
                     tokio::time::sleep(tokio::time::Duration::from_secs(halt_timer.duration_seconds)).await;
-                }
-                GameMessage::ActionTimer(turn_timer) => {
-                    let action_key = game_manager.modify_game(game_id, |game| {
-                        game.team_draft.action_timer_manager.generate_action_key(game_id)
-                    }).await?;
-                    
-                    let turn_timer_with_key = crate::game::messages::ActionTimer {
-                        duration_seconds: turn_timer.duration_seconds,
-                        action_key: action_key.clone(),
-                        default_action: turn_timer.default_action.clone(),
-                        reason: turn_timer.reason.clone(),
-                    };
-                    
-                    let turn_timer_ws_message = WebSocketMessage {
-                        game_id: game_id.to_string(),
-                        message: GameMessage::ActionTimer(turn_timer_with_key),
-                        player_id: player_id.to_string(),
-                        auth_token: None,
-                        action_key: None,
-                    };
-                    
-                    game_manager.broadcast_to_game(game_id, turn_timer_ws_message).await?;
-                    
-                    if let GameMessage::TeamDraft(team_draft_msg) = turn_timer.default_action.as_ref() {
-                        Self::spawn_turn_timer_task(
-                            game_id.to_string(),
-                            action_key,
-                            turn_timer.duration_seconds,
-                            team_draft_msg.clone(),
-                            game_manager.clone(),
-                        );
-                    }
                 }
                 _ => {
                     println!("[GameProcessor] Broadcasting regular message: {:?}", game_message);
@@ -224,7 +166,6 @@ impl GameProcessor {
                         message: game_message.clone(),
                         player_id: player_id.to_string(),
                         auth_token: None,
-                        action_key: None,
                     };
                     
                     game_manager.broadcast_to_game(game_id, broadcast_ws_message).await?;
@@ -232,59 +173,5 @@ impl GameProcessor {
             }
         }
         Ok(())
-    }
-    
-    fn spawn_turn_timer_task(
-        game_id: String,
-        action_key: String,
-        duration_seconds: u64,
-        default_action: TeamDraftMessage,
-        game_manager: Arc<GameManager>,
-    ) {
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_secs(duration_seconds)).await;
-            
-            let should_execute_default = match game_manager.modify_game(&game_id, |game| {
-                game.team_draft.action_timer_manager.validate_action_key(&action_key)
-            }).await {
-                Ok(is_valid) => {
-                    if is_valid {
-                        let _ = game_manager.modify_game(&game_id, |game| {
-                            game.team_draft.action_timer_manager.expire_action_key(&action_key);
-                        }).await;
-                        true
-                    } else {
-                        false
-                    }
-                }
-                Err(_) => false,
-            };
-            
-            if should_execute_default {
-                println!("[GameProcessor] Timer expired, executing default action for game {}", game_id);
-                
-                let acting_player_id = match game_manager.get_game(&game_id).await {
-                    Ok(Some(game)) => {
-                        game.team_draft.get_correct_player_source_id(default_action.clone())
-                    }
-                    _ => {
-                        println!("[GameProcessor] Could not get game for default action");
-                        return;
-                    }
-                };
-                
-                let default_ws_message = WebSocketMessage {
-                    game_id: game_id.clone(),
-                    message: GameMessage::TeamDraft(default_action),
-                    player_id: acting_player_id.clone(),
-                    auth_token: Some(crate::team_draft::state::SERVER_ONLY_AUTHORIZED.to_string()),
-                    action_key: None,
-                };
-                
-                if let Err(e) = GameManager::enqueue_message_with_manager(game_manager, &game_id, default_ws_message).await {
-                    println!("[GameProcessor] Failed to enqueue default action: {}", e);
-                }
-            }
-        });
     }
 } 

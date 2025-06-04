@@ -26,15 +26,6 @@ pub struct HaltTimer {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct ActionTimer {
-    pub duration_seconds: u64,
-    pub action_key: String,
-    pub default_action: Box<GameMessage>,
-    pub reason: TimerReason,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub enum TimerReason {
     TeamDraft(TeamDraftTimerReason),
 }
@@ -50,7 +41,6 @@ pub enum GameMessage {
     ChatMessage { username: String, message: String },
     
     HaltTimer(HaltTimer),
-    ActionTimer(ActionTimer),
     
     TeamDraft(TeamDraftMessage),
 }
@@ -62,7 +52,6 @@ pub struct WebSocketMessage {
     pub message: GameMessage,
     pub player_id: String,
     pub auth_token: Option<String>,
-    pub action_key: Option<String>,
 }
 
 pub fn client_safe_ws_message(ws_message: WebSocketMessage) -> WebSocketMessage {
@@ -71,6 +60,5 @@ pub fn client_safe_ws_message(ws_message: WebSocketMessage) -> WebSocketMessage 
         message: ws_message.message,
         player_id: ws_message.player_id,
         auth_token: None,
-        action_key: None,
     }
 }

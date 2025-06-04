@@ -223,7 +223,6 @@ impl GameManager {
             },
             player_id: player_id.clone(),
             auth_token: None,
-            action_key: None,
         };
 
         if let Err(e) = self.broadcast_to_game(&game_id, ws_message).await {
@@ -301,7 +300,6 @@ impl GameManager {
                     message: player_disconnected,
                     player_id: player_id.clone(),
                     auth_token: None,
-                    action_key: None,
                 };
 
                 let _ = self.broadcast_to_game(&game_id, ws_message).await;
@@ -354,7 +352,6 @@ impl GameManager {
                 message: chat_message,
                 player_id: player_id.to_string(),
                 auth_token: None,
-                action_key: None,
             };
 
             let _ = self.broadcast_to_game(game_id, ws_message).await;

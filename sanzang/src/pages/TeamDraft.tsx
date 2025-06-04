@@ -149,11 +149,6 @@ export default function TeamDraft() {
           setTimerMessage('Next drafter in...')
         } else {}
         setTimeLeft(Number(latestEvent.duration_seconds))
-      } else if (latestEvent.type === 'ActionTimer') {
-        if (latestEvent.reason?.TeamDraft === 'WaitingForDraftPick') {
-          setTimerMessage('Time to pick...')
-        }
-        setTimeLeft(Number(latestEvent.duration_seconds))
       }
     }
   }, [latestEvent])

@@ -5,11 +5,11 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum TeamDraftTimerReason {
+    WaitingForPoolAndCompetition,
     YapperStartingDraft,
     DraftPickShowcase,
     WaitingForDraftPick,
     TransitionToAwarding,
-    PlayerTurnTimeout,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

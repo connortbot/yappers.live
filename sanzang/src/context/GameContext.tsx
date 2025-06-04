@@ -75,7 +75,7 @@ export function GameProvider({ children }: GameProviderProps) {
   const [connecting, setConnecting] = useState(false)
   const [messages, setMessages] = useState<string[]>([])
   const [latestEvent, setLatestEvent] = useState<GameMessage | null>(null)
-  
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
@@ -303,16 +303,16 @@ export function GameProvider({ children }: GameProviderProps) {
     }
   }, [])
 
-  const sendMessage = (message: GameMessage) => {
+  const sendMessage = useCallback((message: GameMessage) => {
     if (wsRef.current && message) {
       wsRef.current.send(JSON.stringify({
         game_id: game?.id,
         auth_token: authToken,
         player_id: playerId,
-        message: message
+        message: message,
       }))
     }
-  }
+  }, [game?.id, authToken, playerId])
 
   const clearError = useCallback(() => {
     setError(null)
