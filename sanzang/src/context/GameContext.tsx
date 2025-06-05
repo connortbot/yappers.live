@@ -38,6 +38,7 @@ interface GameContextState {
   createPoolMessage: (pool: string) => GameMessage
   createCompetitionMessage: (competition: string) => GameMessage
   createStartDraftMessage: (starting_drafter_id: string) => GameMessage
+  createAwardPointMessage: (player_id: string) => GameMessage
 }
 
 const GameContext = createContext<GameContextState | null>(null)
@@ -63,7 +64,8 @@ export function GameProvider({ children }: GameProviderProps) {
     createPoolMessage,
     createCompetitionMessage,
     resetTeamDraftState,
-    createStartDraftMessage
+    createStartDraftMessage,
+    createAwardPointMessage
   } = useTeamDraft()
   
   const [game, setGame] = useState<Game | null>(null)
@@ -358,7 +360,8 @@ export function GameProvider({ children }: GameProviderProps) {
     leaveGame,
     createPoolMessage,
     createCompetitionMessage,
-    createStartDraftMessage
+    createStartDraftMessage,
+    createAwardPointMessage
   }
 
   return (

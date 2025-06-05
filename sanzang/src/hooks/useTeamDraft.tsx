@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { TeamDraftManager } from '../lib/bindings/TeamDraftManager'
 import type { GameMessage } from '../lib/bindings/GameMessage'
+import { TeamDraftMessage } from '../lib/bindings/TeamDraftMessage'
 
 export function useTeamDraft() {
   const [teamDraftState, setTeamDraftState] = useState<TeamDraftManager | null>(null)
@@ -34,11 +35,33 @@ export function useTeamDraft() {
             updated.round_data = {
               ...updated.round_data,
               starting_drafter_id: message.starting_drafter_id,
-              current_drafter_id: message.starting_drafter_id
+              current_drafter_id: message.starting_drafter_id,
+              player_to_picks: { ...(updated.round_data.player_to_picks || {}) }
+            }
+            break
+          case 'DraftPick':
+            if (updated.round_data) {
+              const newPlayerToPicks = { ...updated.round_data.player_to_picks }
+              if (!newPlayerToPicks[message.drafter_id]) {
+                newPlayerToPicks[message.drafter_id] = []
+              }
+              newPlayerToPicks[message.drafter_id]!.push(message.pick)
+              
+              updated.round_data = {
+                ...updated.round_data,
+                player_to_picks: newPlayerToPicks
+              }
+              console.log(message, updated.round_data.player_to_picks)
             }
             break
           case 'NextDrafter':
             updated.round_data.current_drafter_id = message.drafter_id
+            break
+          case 'AwardingPhase':
+            updated.phase = 'Awarding'
+            break
+          case 'AwardPoint':
+            updated.player_points[message.player_id] = (updated.player_points[message.player_id] ?? 0) + 1
             break
         }
         
@@ -52,7 +75,7 @@ export function useTeamDraft() {
       type: 'TeamDraft',
       msg_type: 'SetPool',
       pool: pool
-    } as any
+    } as GameMessage & TeamDraftMessage
   }, [])
 
   const createCompetitionMessage = useCallback((competition: string): GameMessage => {
@@ -60,7 +83,7 @@ export function useTeamDraft() {
       type: 'TeamDraft',
       msg_type: 'SetCompetition',
       competition: competition
-    } as any
+    } as GameMessage & TeamDraftMessage
   }, [])
 
   const createStartDraftMessage = useCallback((starting_drafter_id: string): GameMessage => {
@@ -68,7 +91,15 @@ export function useTeamDraft() {
       type: 'TeamDraft',
       msg_type: 'StartDraft',
       starting_drafter_id: starting_drafter_id
-    } as any
+    } as GameMessage & TeamDraftMessage
+  }, [])
+
+  const createAwardPointMessage = useCallback((player_id: string): GameMessage => {
+    return {
+      type: 'TeamDraft',
+      msg_type: 'AwardPoint',
+      player_id: player_id
+    } as GameMessage & TeamDraftMessage
   }, [])
 
   const resetTeamDraftState = useCallback(() => {
@@ -82,6 +113,7 @@ export function useTeamDraft() {
     createPoolMessage,
     createCompetitionMessage,
     createStartDraftMessage,
+    createAwardPointMessage,
     resetTeamDraftState
   }
 } 

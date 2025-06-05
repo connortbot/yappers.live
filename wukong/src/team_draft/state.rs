@@ -120,7 +120,9 @@ impl TeamDraftManager {
                 self.round_data.current_drafter_id = start_draft_msg.starting_drafter_id.clone();
                 self.round_data.player_to_picks.clear();
                 for player in &players {
-                    self.round_data.player_to_picks.entry(player.id.clone()).or_insert(Vec::new());
+                    if player.id != self.yapper_id {
+                        self.round_data.player_to_picks.entry(player.id.clone()).or_insert(Vec::new());
+                    }
                 }
                 for player in &players {
                     self.player_points.entry(player.id.clone()).or_insert(0);
