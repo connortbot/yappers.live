@@ -37,6 +37,7 @@ export default function TeamDraft() {
   
   const [timeLeft, setTimeLeft] = useState(0)
   const [timerMessage, setTimerMessage] = useState('')
+  const [timerEndTimestamp, setTimerEndTimestamp] = useState<number | null>(null)
   
   const [draftInput, setDraftInput] = useState('')
   const [currentPick, setCurrentPick] = useState('')
@@ -45,13 +46,19 @@ export default function TeamDraft() {
   const isYapper = playerId === teamDraftState?.yapper_id
 
   useEffect(() => {
-    if (timeLeft > 0) {
-      const timer = setTimeout(() => {
-        setTimeLeft(timeLeft - 1)
-      }, 1000)
-      return () => clearTimeout(timer)
+    if (timerEndTimestamp) {
+      const updateTimer = () => {
+        const now = Date.now()
+        const remaining = Math.max(0, Math.ceil((timerEndTimestamp - now) / 1000))
+        setTimeLeft(remaining)
+        
+        if (remaining > 0) {
+          setTimeout(updateTimer, 100)
+        }
+      }
+      updateTimer()
     }
-  }, [timeLeft, timerMessage])
+  }, [timerEndTimestamp])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -148,7 +155,7 @@ export default function TeamDraft() {
         } else if (latestEvent.reason?.TeamDraft === 'DraftPickShowcase') {
           setTimerMessage('Next drafter in...')
         } else {}
-        setTimeLeft(Number(latestEvent.duration_seconds))
+        setTimerEndTimestamp(Number(latestEvent.end_timestamp_ms))
       }
     }
   }, [latestEvent])

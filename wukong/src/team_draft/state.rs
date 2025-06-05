@@ -5,6 +5,7 @@ use ts_rs::TS;
 use crate::game::messages::{GameMessage, TimerReason};
 use crate::team_draft::messages::{TeamDraftMessage, TeamDraftTimerReason};
 use crate::game::game_manager::Player;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SERVER_ONLY_AUTHORIZED: &str = "00000000-0000-0000-0000-000000000000";
 
@@ -128,7 +129,10 @@ impl TeamDraftManager {
                 vec![
                     GameMessage::HaltTimer(
                         crate::game::messages::HaltTimer {
-                            duration_seconds: 3,
+                            end_timestamp_ms: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as u64 + 3000,
                             reason: TimerReason::TeamDraft(TeamDraftTimerReason::YapperStartingDraft),
                         }
                     ),
@@ -151,13 +155,19 @@ impl TeamDraftManager {
                     self.phase = TeamDraftPhase::Awarding;
                     messages.push(GameMessage::HaltTimer(
                         crate::game::messages::HaltTimer {
-                            duration_seconds: 3,
+                            end_timestamp_ms: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as u64 + 3000,
                             reason: TimerReason::TeamDraft(TeamDraftTimerReason::DraftPickShowcase),
                         }
                     ));
                     messages.push(GameMessage::HaltTimer(
                         crate::game::messages::HaltTimer {
-                            duration_seconds: 5,
+                            end_timestamp_ms: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as u64 + 8000,
                             reason: TimerReason::TeamDraft(TeamDraftTimerReason::TransitionToAwarding),
                         }
                     ));
@@ -174,7 +184,10 @@ impl TeamDraftManager {
                         
                         messages.push(GameMessage::HaltTimer(
                             crate::game::messages::HaltTimer {
-                                duration_seconds: 3,
+                                end_timestamp_ms: SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_millis() as u64 + 3000,
                                 reason: TimerReason::TeamDraft(TeamDraftTimerReason::DraftPickShowcase),
                             }
                         ));

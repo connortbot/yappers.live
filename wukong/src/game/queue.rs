@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use crate::game::messages::{WebSocketMessage, GameMessage, GameMode, GameStartedMessage, client_safe_ws_message};
@@ -156,8 +156,18 @@ impl GameProcessor {
                     
                     game_manager.broadcast_to_game(game_id, broadcast_ws_message).await?;
                     
-                    println!("[GameProcessor] Halting for {} seconds", halt_timer.duration_seconds);
-                    tokio::time::sleep(tokio::time::Duration::from_secs(halt_timer.duration_seconds)).await;
+                    let current_time_ms = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64;
+                    
+                    if halt_timer.end_timestamp_ms > current_time_ms {
+                        let sleep_duration_ms = halt_timer.end_timestamp_ms - current_time_ms;
+                        println!("[GameProcessor] Halting for {} ms until timestamp {}", sleep_duration_ms, halt_timer.end_timestamp_ms);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(sleep_duration_ms)).await;
+                    } else {
+                        println!("[GameProcessor] Timer already expired, continuing immediately");
+                    }
                 }
                 _ => {
                     println!("[GameProcessor] Broadcasting regular message: {:?}", game_message);

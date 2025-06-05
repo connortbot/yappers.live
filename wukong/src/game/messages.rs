@@ -20,7 +20,7 @@ pub struct GameStartedMessage {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct HaltTimer {
-    pub duration_seconds: u64,
+    pub end_timestamp_ms: u64,
     pub reason: TimerReason,
 }
 
