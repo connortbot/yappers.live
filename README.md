@@ -24,5 +24,6 @@ I wanna use Valkey but like, I really don't need it.
 ### Local Dev
 - sanzang: `npm run dev`
 - wukong: `cargo watch -x run`
-
-Or with the `Dockerfile` compose.
+valkey: 
+- `docker-compose -f docker-compose-local.yml up -d`
+- `valkey-cli`, `MONITOR`
