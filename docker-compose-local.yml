@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  valkey:
+    image: valkey/valkey:latest
+    container_name: yappers-valkey-local
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+      - ./valkey.conf:/etc/valkey/valkey.conf:ro
+    command: valkey-server /etc/valkey/valkey.conf
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  valkey_data:
+    driver: local 
