@@ -1,6 +1,6 @@
 use redis::{Client, AsyncCommands, RedisResult, ToRedisArgs};
 use redis::aio::MultiplexedConnection;
-use crate::error::ErrorResponse;
+use crate::error::{ErrorResponse, ErrorCode};
 use std::collections::{HashMap, HashSet};
 
 pub type CacheResult<T> = Result<T, ErrorResponse>;
@@ -19,9 +19,8 @@ pub struct RedisClient {
 }
 
 impl RedisClient {
-    pub async fn new(redis_url: Option<&str>) -> RedisResult<Self> {
-        let url = redis_url.unwrap_or("redis://localhost:6379");
-        let client = Client::open(url)?;
+    pub async fn new(redis_url: String) -> RedisResult<Self> {
+        let client = Client::open(redis_url)?;
         let connection = client.get_multiplexed_tokio_connection().await?;
         
         Ok(RedisClient { connection })
@@ -119,5 +118,17 @@ impl RedisClient {
     pub async fn watch(&self, key: impl RedisKey) -> RedisResult<()> {
         let mut conn = self.connection.clone();
         redis::cmd("WATCH").arg(key).query_async(&mut conn).await
+    }
+
+    // HELPERS
+    pub async fn get_required(&self, key: impl RedisKey, error_resp: ErrorResponse) -> Result<String, ErrorResponse> {
+        match self.get(key).await {
+            Ok(Some(value)) => Ok(value),
+            Ok(None) => Err(error_resp),
+            Err(e) => Err(ErrorResponse {
+                error: ErrorCode::InternalServerError,
+                message: format!("Redis error: {}", e),
+            }),
+        }
     }
 }

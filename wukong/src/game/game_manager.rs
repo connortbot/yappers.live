@@ -14,6 +14,8 @@ use ts_rs::TS;
 use crate::team_draft::state::TeamDraftManager;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
+use crate::cache::redis_client::RedisClient;
+use crate::cache::key_builder::KeyBuilder;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
 #[ts(export)]
@@ -43,13 +45,14 @@ pub struct GameEntry {
 }
 pub type GameResult<T> = Result<T, ErrorResponse>;
 
-#[derive(Default)]
 pub struct GameManager {
+    redis_client: RedisClient,
+    
+    
     games: RwLock<HashMap<String, Game>>,
     player_to_game: RwLock<HashMap<String, String>>,
     game_broadcasters: RwLock<HashMap<String, broadcast::Sender<String>>>,
     player_to_auth_token: RwLock<HashMap<String, String>>,
-    code_to_game: RwLock<HashMap<String, String>>,
     
     // for message processing - just stores the senders
     game_processors: RwLock<HashMap<String, mpsc::Sender<QueuedMessage>>>, // game_id -> sender
@@ -57,8 +60,20 @@ pub struct GameManager {
 }
 
 impl GameManager {
-    pub fn new() -> Self {
-        Self::default()
+    pub async fn new() -> Self {
+        let redis_url = std::env::var("REDIS_URL")
+            .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+            
+        let redis_client = RedisClient::new(redis_url).await.unwrap();
+        Self {
+            redis_client,
+            games: RwLock::new(HashMap::new()),
+            player_to_game: RwLock::new(HashMap::new()),
+            game_broadcasters: RwLock::new(HashMap::new()),
+            player_to_auth_token: RwLock::new(HashMap::new()),
+            game_processors: RwLock::new(HashMap::new()),
+            processor_handles: RwLock::new(HashMap::new()),
+        }
     }
 
     fn generate_game_code(&self) -> String {
@@ -95,9 +110,20 @@ impl GameManager {
 
         let game_code = loop {
             let code = self.generate_game_code();
-            let code_to_game = self.code_to_game.read().await;
-            if !code_to_game.contains_key(&code) {
-                break code;
+            let key = KeyBuilder::new("game_code").field(code.clone()).get_key();
+            match self.redis_client.get(&key).await {
+                Ok(Some(_)) => {
+                    continue;
+                }
+                Ok(None) => {
+                    break code;
+                }
+                Err(e) => {
+                    return Err(ErrorResponse {
+                        error: ErrorCode::InternalServerError,
+                        message: format!("Redis error: {}", e),
+                    });
+                }
             }
         };
 
@@ -123,7 +149,6 @@ impl GameManager {
         let mut games = self.games.write().await;
         let mut player_to_game = self.player_to_game.write().await;
         let mut game_broadcasters = self.game_broadcasters.write().await;
-        let mut code_to_game = self.code_to_game.write().await;
         let mut player_to_auth_token = self.player_to_auth_token.write().await;
 
         if player_to_game.contains_key(&host_id) {
@@ -140,7 +165,9 @@ impl GameManager {
 
         games.insert(game_id.clone(), game.clone());
         player_to_game.insert(host_id, game_id.clone());
-        code_to_game.insert(game_code, game_id);
+        
+        let key = KeyBuilder::new("game_code").field(game_code).get_key();
+        self.redis_client.set(&key, game_id).await.unwrap();
 
         Ok(GameEntry {
             game: game,
@@ -159,13 +186,13 @@ impl GameManager {
         let game_code = game_code.to_uppercase();
 
         let game_id = {
-            let code_to_game = self.code_to_game.read().await;
-            code_to_game.get(&game_code).cloned()
-                .ok_or(ErrorResponse{
-                    error: ErrorCode::GameNotFound,
-                    message: "Game not found".to_string(),
-                })?
+            let key = KeyBuilder::new("game_code").field(&game_code).get_key();
+            self.redis_client.get_required(&key, ErrorResponse{
+                error: ErrorCode::GameNotFound,
+                message: "Game not found".to_string(),
+            }).await?
         };
+
         self.join_game(player_username, game_id).await
     }
 
@@ -316,7 +343,6 @@ impl GameManager {
     async fn cleanup_empty_game(&self, game_id: &str) -> GameResult<()> {
         let mut games = self.games.write().await;
         let mut game_broadcasters = self.game_broadcasters.write().await;
-        let mut code_to_game = self.code_to_game.write().await;
 
         let game_code = games.get(game_id).map(|g| g.code.clone());
 
@@ -324,7 +350,8 @@ impl GameManager {
         game_broadcasters.remove(game_id);
         
         if let Some(code) = game_code {
-            code_to_game.remove(&code);
+            let key = KeyBuilder::new("game_code").field(&code).get_key();
+            self.redis_client.del(&key).await.unwrap();
         }
 
         self.cleanup_game_processor(game_id).await;

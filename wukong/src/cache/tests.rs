@@ -1,7 +1,7 @@
 use super::redis_client::RedisClient;
 
 async fn setup_client() -> RedisClient {
-    RedisClient::new(Some("redis://127.0.0.1:6379"))
+    RedisClient::new("redis://127.0.0.1:6379".to_string())
         .await
         .expect("Failed to connect to Redis")
 }
