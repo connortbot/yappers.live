@@ -8,7 +8,7 @@ use crate::game::game_manager::Player;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SERVER_ONLY_AUTHORIZED: &str = "00000000-0000-0000-0000-000000000000";
-
+pub const DEFAULT_TEAM_SIZE: u8 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
 #[ts(export)]
@@ -65,7 +65,7 @@ impl TeamDraftManager {
                 round: 1,
                 pool: String::new(),
                 competition: String::new(),
-                team_size: 3,
+                team_size: DEFAULT_TEAM_SIZE,
                 player_to_picks: HashMap::new(),
                 starting_drafter_id: String::new(),
                 current_drafter_id: String::new(),
@@ -220,7 +220,7 @@ impl TeamDraftManager {
                         round: 1,
                         pool: String::new(),
                         competition: String::new(),
-                        team_size: 3,
+                        team_size: DEFAULT_TEAM_SIZE,
                         player_to_picks: HashMap::new(),
                         starting_drafter_id: String::new(),
                         current_drafter_id: String::new(),
@@ -243,13 +243,24 @@ impl TeamDraftManager {
                     self.round_data.round += 1;
                     self.round_data.pool = String::new();
                     self.round_data.competition = String::new();
-                    self.round_data.team_size = 3;
+                    self.round_data.team_size = DEFAULT_TEAM_SIZE;
                     self.round_data.player_to_picks.clear();
                     self.round_data.starting_drafter_id = String::new();
                     self.round_data.current_drafter_id = String::new();
                     
+                    messages.push(GameMessage::HaltTimer(
+                        crate::game::messages::HaltTimer {
+                            end_timestamp_ms: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as u64 + 8000,
+                            reason: TimerReason::TeamDraft(TeamDraftTimerReason::WaitingForNextRound),
+                        }
+                    ));
                     messages.push(GameMessage::TeamDraft(TeamDraftMessage::NextRound(
                         crate::team_draft::messages::NextRound {
+                            yapper_id: self.yapper_id.clone(),
+                            yapper_index: self.yapper_index,
                             round: self.round_data.round,
                             team_size: self.round_data.team_size,
                         }

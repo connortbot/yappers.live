@@ -53,6 +53,18 @@ impl GameProcessor {
         use GameMessage::*;
         
         match &ws_message.message {
+            BackToLobby { .. } => {
+                if let Ok(Some(game)) = game_manager.get_game(game_id).await {
+                    if ws_message.player_id != game.host_id {
+                        println!("[GameProcessor] Player {} not authorized to send game back to lobby (only host {} can)", ws_message.player_id, game.host_id);
+                        return Ok(());
+                    }
+                    
+                    game_manager.broadcast_to_game(game_id, client_safe_ws_message(ws_message)).await?;
+                } else {
+                    println!("[GameProcessor] Game {} not found for BackToLobby message", game_id);
+                }
+            }
             PlayerLeft { player_id, .. } => {
                 game_manager.handle_player_left(game_id, player_id).await?;
             }

@@ -10,6 +10,7 @@ pub enum TeamDraftTimerReason {
     DraftPickShowcase,
     WaitingForDraftPick,
     TransitionToAwarding,
+    WaitingForNextRound,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -56,6 +57,8 @@ pub struct AwardPoint {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct NextRound {
+    pub yapper_id: String,
+    pub yapper_index: u8,
     pub round: u8,
     pub team_size: u8,
 }

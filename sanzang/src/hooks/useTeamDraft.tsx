@@ -51,7 +51,6 @@ export function useTeamDraft() {
                 ...updated.round_data,
                 player_to_picks: newPlayerToPicks
               }
-              console.log(message, updated.round_data.player_to_picks)
             }
             break
           case 'NextDrafter':
@@ -63,6 +62,24 @@ export function useTeamDraft() {
           case 'AwardPoint':
             updated.player_points[message.player_id] = (updated.player_points[message.player_id] ?? 0) + 1
             break
+          case 'CompleteGame':
+            updated.phase = 'Complete'
+            updated.player_points = message.player_points
+            break
+          case 'NextRound':
+            updated.phase = 'YapperChoosing'
+            updated.yapper_id = message.yapper_id
+            updated.yapper_index = message.yapper_index
+            updated.round_data = {
+              ...updated.round_data,
+              round: message.round,
+              team_size: message.team_size,
+              player_to_picks: {},
+              starting_drafter_id: "",
+              current_drafter_id: "",
+              pool: "",
+              competition: "",
+            }
         }
         
         return updated

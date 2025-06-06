@@ -29,6 +29,7 @@ interface GameContextState {
   
   createGame: (username: string) => Promise<void>
   joinGame: (username: string, gameCode: string) => Promise<void>
+  getPlayerUsername: (playerId: string) => string | null
   connectWebSocket: () => void
   disconnect: () => void
   sendMessage: (message: GameMessage) => void
@@ -39,6 +40,7 @@ interface GameContextState {
   createCompetitionMessage: (competition: string) => GameMessage
   createStartDraftMessage: (starting_drafter_id: string) => GameMessage
   createAwardPointMessage: (player_id: string) => GameMessage
+  createBackToLobbyMessage: () => GameMessage
 }
 
 const GameContext = createContext<GameContextState | null>(null)
@@ -149,7 +151,10 @@ export function GameProvider({ children }: GameProviderProps) {
           updateTeamDraftState(gameStartedMessage.initial_team_draft_state)
         }
         break
-        
+      case 'BackToLobby':
+        setLatestEvent(message)
+        setMessages(prev => [...prev, `🏠 Returning to lobby...`])        
+        break
       default:
         setLatestEvent(message)
     }
@@ -294,6 +299,10 @@ export function GameProvider({ children }: GameProviderProps) {
     }
   }, [joinGameAPI, connectWebSocketWithGameData])
 
+  const getPlayerUsername = useCallback((playerId: string) => {
+    return game?.players.find((p: Player) => p.id === playerId)?.username || null
+  }, [game?.players])
+
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false
     if (wsRef.current) {
@@ -339,6 +348,12 @@ export function GameProvider({ children }: GameProviderProps) {
     }
   }, [])
 
+  const createBackToLobbyMessage = useCallback((): GameMessage => {
+    return {
+      type: 'BackToLobby'
+    } as GameMessage
+  }, [])
+
   const contextValue: GameContextState = {
     game,
     playerId,
@@ -353,6 +368,7 @@ export function GameProvider({ children }: GameProviderProps) {
     error,
     createGame,
     joinGame,
+    getPlayerUsername,
     connectWebSocket,
     disconnect,
     sendMessage,
@@ -361,7 +377,8 @@ export function GameProvider({ children }: GameProviderProps) {
     createPoolMessage,
     createCompetitionMessage,
     createStartDraftMessage,
-    createAwardPointMessage
+    createAwardPointMessage,
+    createBackToLobbyMessage
   }
 
   return (

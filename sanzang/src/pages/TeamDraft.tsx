@@ -25,10 +25,12 @@ export default function TeamDraft() {
     teamDraftState,
     sendMessage,
     leaveGame,
+    getPlayerUsername,
     createPoolMessage,
     createCompetitionMessage,
     createStartDraftMessage,
-    createAwardPointMessage
+    createAwardPointMessage,
+    createBackToLobbyMessage
   } = useGameContext()
 
   const [poolInput, setPoolInput] = useState('')
@@ -36,6 +38,7 @@ export default function TeamDraft() {
   const [showPlayerSelection, setShowPlayerSelection] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
   const [selectedPlayerForAward, setSelectedPlayerForAward] = useState<string | null>(null)
+  const [awardedPlayerId, setAwardedPlayerId] = useState<string | null>(null)
   
   const [timeLeft, setTimeLeft] = useState(0)
   const [timerMessage, setTimerMessage] = useState('')
@@ -142,7 +145,25 @@ export default function TeamDraft() {
     }, 100)
   }
 
+  const handleBackToLobby = () => {
+    const backToLobbyMessage = createBackToLobbyMessage()
+    sendMessage(backToLobbyMessage)
+  }
+
+  const resetState = () => {
+    setPoolInput('')
+    setCompetitionInput('')
+    setCurrentPick('')
+    setCurrentPickDrafter('')
+    setSelectedPlayerId(null)
+    setSelectedPlayerForAward(null)
+    setAwardedPlayerId(null)
+    setShowPlayerSelection(false)
+    setDraftInput('')
+  }
+
   useEffect(() => {
+    console.log('latestEvent', latestEvent)
     if (latestEvent) {
       if (latestEvent.type === 'TeamDraft') {
         switch (latestEvent.msg_type) {
@@ -160,6 +181,15 @@ export default function TeamDraft() {
             setCurrentPick('')
             setCurrentPickDrafter(latestEvent.drafter_id)
             break
+          case 'NextRound':
+            resetState()
+            break
+          case 'AwardPoint':
+            setAwardedPlayerId(latestEvent.player_id)
+            break
+          case 'CompleteGame':
+            resetState()
+            break
         }
       } else if (latestEvent.type === 'HaltTimer') {
         if (latestEvent.reason?.TeamDraft === 'YapperStartingDraft') {
@@ -170,8 +200,13 @@ export default function TeamDraft() {
           setTimerMessage('Next drafter in...')
         } else if (latestEvent.reason?.TeamDraft === 'TransitionToAwarding') {
           setTimerMessage('Awarding to the best team in...')
+        } else if (latestEvent.reason?.TeamDraft === 'WaitingForNextRound') {
+          setTimerMessage('Next round in...')
         }
         setTimerEndTimestamp(Number(latestEvent.end_timestamp_ms))
+      } else if (latestEvent.type === 'BackToLobby') {
+        resetState()
+        navigate('/lobby/join')
       }
     }
   }, [latestEvent])
@@ -263,7 +298,7 @@ export default function TeamDraft() {
       }
 
       return (
-        <Section title={isYapper ? "What is this round all about?" : "The Yapper is choosing!"}>
+        <Section title={isYapper ? "What is this round all about?" : `${getPlayerUsername(teamDraftState.yapper_id) || 'Someone'} is the yapper!`}>
           <div className="space-y-4 text-center">
             <p className="font-secondary text-pencil text-base sm:text-lg italic">
               Choose someone/something that is...
@@ -323,7 +358,6 @@ export default function TeamDraft() {
 
     if (teamDraftState.phase === 'Drafting') {
       const currentDrafterId = teamDraftState.round_data.current_drafter_id
-      const currentDrafter = game.players.find(p => p.id === currentDrafterId)
       const isDrafting = currentDrafterId === playerId
 
       return (
@@ -332,7 +366,7 @@ export default function TeamDraft() {
             {currentPick ? (
               <div className="space-y-2">
                 <p className="font-secondary text-pencil text-base sm:text-lg">
-                  {currentPickDrafter === playerId ? 'You chose:' : `${game.players.find(p => p.id === currentPickDrafter)?.username || 'Someone'} chose:`}
+                  {currentPickDrafter === playerId ? 'You chose:' : `${getPlayerUsername(currentPickDrafter) || 'Someone'} chose:`}
                 </p>
                 <p className="text-2xl sm:text-3xl font-bold font-primary text-pencil">
                   {currentPick}
@@ -368,7 +402,7 @@ export default function TeamDraft() {
               </div>
             ) : (
               <p className="text-2xl sm:text-3xl font-bold font-primary text-pencil">
-                {currentDrafter?.username || 'Someone'} is thinking!
+                {getPlayerUsername(currentDrafterId) || 'Someone'} is thinking!
               </p>
             )}
           </div>
@@ -380,35 +414,57 @@ export default function TeamDraft() {
     if (teamDraftState.phase === 'Awarding') {
       if (isYapper) {
         const drafters = game.players.filter(p => p.id !== teamDraftState.yapper_id)
+        const winnerUsername = awardedPlayerId ? getPlayerUsername(awardedPlayerId) || 'Someone' : null
         
         return (
           <Section title="Award a point to the best team!">
             <div className="space-y-6">
               <div className="text-center">
-                <p className="font-secondary text-pencil text-base sm:text-lg italic mb-4">
-                  "Choose someone/something that is... '{teamDraftState.round_data.pool}' and is competing to win at... '{teamDraftState.round_data.competition}'?"
-                </p>
+                {awardedPlayerId && winnerUsername ? (
+                  <p className="font-secondary text-pencil text-base sm:text-lg italic mb-4">
+                    You said {winnerUsername} had the best team!
+                  </p>
+                ) : (
+                  <p className="font-secondary text-pencil text-base sm:text-lg italic mb-4">
+                    "Choose someone/something that is... '{teamDraftState.round_data.pool}' and is competing to win at... '{teamDraftState.round_data.competition}'?"
+                  </p>
+                )}
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {drafters.map((player) => {
                   const playerPicks = teamDraftState.round_data.player_to_picks[player.id] || []
+                  const isWinner = awardedPlayerId === player.id
+                  
                   return (
                     <div key={player.id} className="space-y-2">
-                      <Button
-                        variant='primary'
-                        size="medium"
-                        onMouseUp={() => handlePlayerSelectForAward(player.id)}
-                        className="w-full"
-                      >
-                        <span className="flex items-center justify-center gap-2">
-                          {player.username}
-                          {selectedPlayerForAward === player.id && <IoCheckmark className="w-5 h-5" />}
-                        </span>
-                      </Button>
+                      {!awardedPlayerId && (
+                        <Button
+                          variant='primary'
+                          size="medium"
+                          onMouseUp={() => handlePlayerSelectForAward(player.id)}
+                          className="w-full"
+                        >
+                          <span className="flex items-center justify-center gap-2">
+                            {player.username}
+                            {selectedPlayerForAward === player.id && <IoCheckmark className="w-5 h-5" />}
+                          </span>
+                        </Button>
+                      )}
                       
-                      <div className="bg-paper-light rounded-lg p-3 border border-pencil/20">
-                        <p className="font-secondary text-pencil text-sm mb-2">Team:</p>
+                      <div className={`bg-paper-light rounded-lg p-3 border ${
+                        isWinner 
+                          ? 'border-4 border-pencil' 
+                          : 'border border-pencil/20'
+                      }`}>
+                        {isWinner && (
+                          <div className="text-center mb-3">
+                            <p className="font-primary text-pencil font-bold text-lg">
+                              BEST TEAM
+                            </p>
+                          </div>
+                        )}
+                        <p className="font-primary text-pencil font-bold mb-2">{player.username}'s Team:</p>
                         <div className="space-y-1">
                           {playerPicks.map((pick, index) => (
                             <p key={index} className="font-primary text-pencil text-sm">
@@ -422,7 +478,7 @@ export default function TeamDraft() {
                 })}
               </div>
               
-              {selectedPlayerForAward && (
+              {selectedPlayerForAward && !awardedPlayerId && (
                 <div className="text-center">
                   <Button
                     variant="primary"
@@ -438,15 +494,43 @@ export default function TeamDraft() {
           </Section>
         )
       } else {
+        const yapperUsername = getPlayerUsername(teamDraftState.yapper_id) || 'Someone'
+        const winnerUsername = awardedPlayerId ? getPlayerUsername(awardedPlayerId) || 'Someone' : null
+        
         return (
           <Section title="The Yapper is deciding...">
             <div className="space-y-6">
+              <div className="text-center">
+                {awardedPlayerId && winnerUsername ? (
+                  <p className="font-secondary text-pencil text-base sm:text-lg italic mb-4">
+                    {yapperUsername} says {winnerUsername} had the best team!
+                  </p>
+                ) : (
+                  <p className="font-secondary text-pencil text-base sm:text-lg italic mb-4">
+                    The Yapper is choosing the best team...
+                  </p>
+                )}
+              </div>
+              
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {game.players.filter(p => p.id !== teamDraftState.yapper_id).map((player) => {
                   const playerPicks = teamDraftState.round_data.player_to_picks[player.id] || []
+                  const isWinner = awardedPlayerId === player.id
+                  
                   return (
                     <div key={player.id} className="space-y-2">
-                      <div className="bg-paper-light rounded-lg p-3 border border-pencil/20">
+                      <div className={`bg-paper-light rounded-lg p-3 border ${
+                        isWinner 
+                          ? 'border-4 border-pencil' 
+                          : 'border border-pencil/20'
+                      }`}>
+                        {isWinner && (
+                          <div className="text-center mb-3">
+                            <p className="font-primary text-pencil font-bold text-lg">
+                              BEST TEAM
+                            </p>
+                          </div>
+                        )}
                         <p className="font-primary text-pencil font-bold mb-2">{player.username}'s Team:</p>
                         <div className="space-y-1">
                           {playerPicks.map((pick, index) => (
@@ -465,6 +549,98 @@ export default function TeamDraft() {
           </Section>
         )
       }
+    }
+    
+    if (teamDraftState.phase === 'Complete') {
+      const isHost = playerId === game?.host_id
+      
+      const leaderboard = game?.players
+        .map(player => ({
+          ...player,
+          points: teamDraftState.player_points[player.id] || 0
+        }))
+        .sort((a, b) => b.points - a.points) || []
+      
+      const maxPoints = leaderboard.length > 0 ? leaderboard[0].points : 0
+      const winners = leaderboard.filter(player => player.points === maxPoints)
+      
+      return (
+        <Section title="Game Complete!">
+          <div className="space-y-6">
+            <div className="text-center">
+              <h2 className="text-2xl sm:text-3xl font-bold font-primary text-pencil mb-2">
+                Final Leaderboard
+              </h2>
+              {winners.length === 1 ? (
+                <p className="font-secondary text-pencil text-base sm:text-lg italic">
+                  🎉 {winners[0].username} wins with {maxPoints} point{maxPoints !== 1 ? 's' : ''}!
+                </p>
+              ) : (
+                <p className="font-secondary text-pencil text-base sm:text-lg italic">
+                  🎉 It's a tie! {winners.map(w => w.username).join(', ')} win with {maxPoints} point{maxPoints !== 1 ? 's' : ''}!
+                </p>
+              )}
+            </div>
+            
+            <div className="space-y-3">
+              {leaderboard.map((player, index) => {
+                const isWinner = player.points === maxPoints
+                const position = index + 1
+                
+                return (
+                  <div 
+                    key={player.id} 
+                    className={`bg-paper-light rounded-lg p-4 border flex items-center justify-between ${
+                      isWinner 
+                        ? 'border-4 border-pencil' 
+                        : 'border border-pencil/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`text-2xl font-bold font-primary ${
+                        isWinner ? 'text-pencil' : 'text-pencil/60'
+                      }`}>
+                        #{position}
+                      </div>
+                      <div>
+                        <p className={`font-primary font-bold text-lg ${
+                          isWinner ? 'text-pencil' : 'text-pencil/80'
+                        }`}>
+                          {player.username}
+                          {isWinner && ' 👑'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className={`text-right ${
+                      isWinner ? 'text-pencil' : 'text-pencil/60'
+                    }`}>
+                      <p className="font-primary font-bold text-xl">
+                        {player.points}
+                      </p>
+                      <p className="font-secondary text-sm">
+                        point{player.points !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            
+            {isHost && (
+              <div className="text-center pt-4">
+                <Button
+                  variant="primary"
+                  size="large"
+                  onMouseUp={handleBackToLobby}
+                  className="w-full text-lg sm:text-xl py-3"
+                >
+                  Back to Lobby
+                </Button>
+              </div>
+            )}
+          </div>
+        </Section>
+      )
     }
     
     return null

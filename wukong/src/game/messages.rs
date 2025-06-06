@@ -32,6 +32,10 @@ pub enum TimerReason {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
+pub struct BackToLobby {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(tag = "type")]
 pub enum GameMessage {
     PlayerJoined { username: String, player_id: String },
@@ -41,6 +45,7 @@ pub enum GameMessage {
     ChatMessage { username: String, message: String },
     
     HaltTimer(HaltTimer),
+    BackToLobby(BackToLobby),
     
     TeamDraft(TeamDraftMessage),
 }
