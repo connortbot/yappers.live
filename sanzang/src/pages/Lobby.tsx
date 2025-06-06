@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { Button } from '../components/Button'
 import { Screen } from '../components/Screen'
@@ -10,6 +10,8 @@ import { PlayerList } from '../components/PlayerList'
 import { ChatBox } from '../components/ChatBox'
 import { useGameContext } from '../context/GameContext'
 import type { Player } from '../lib/bindings/Player'
+import type { GameMode } from '../lib/bindings/GameMode'
+import { GameStartedMessage } from '../lib/bindings/GameStartedMessage'
 
 export default function Lobby() {
   const { mode } = useParams<{ mode: 'create' | 'join' }>()
@@ -20,6 +22,7 @@ export default function Lobby() {
     username,
     connected,
     messages,
+    latestEvent,
     loading,
     error,
     createGame,
@@ -61,17 +64,48 @@ export default function Lobby() {
     navigate('/')
   }
 
+  const handleStartGame = () => {
+    const gameStartMessage = {
+      type: 'GameStarted' as const,
+      game_type: { type: 'TeamDraft' } as GameMode,
+      initial_team_draft_state: null,
+    }
+    sendMessage(gameStartMessage)
+  }
+
+  useEffect(() => {
+    if (latestEvent) {
+      console.log(latestEvent)
+      
+      if (latestEvent.type === 'GameStarted') {
+        const gameStartedEvent = latestEvent as GameStartedMessage
+        switch (gameStartedEvent.game_type.type) {
+          case 'TeamDraft':
+            navigate('/team_draft')
+            break
+          default:
+            console.warn('Unknown game type:', gameStartedEvent.game_type.type)
+        }
+      }
+    }
+  }, [latestEvent, navigate])
+
   return (
     <Screen>
       <div className="flex justify-between items-center mb-6 sm:mb-8">
-        <Button
-          variant="secondary"
-          size="small"
-          onMouseUp={handleBackToHome}
-          className="text-xs sm:text-sm"
-        >
-          ← Back
-        </Button>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="secondary"
+            size="small"
+            onMouseUp={handleBackToHome}
+            className="text-xs sm:text-sm"
+          >
+            ← Back
+          </Button>
+          <h1 className="text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-bold font-primary leading-tight">
+            yappers.live
+          </h1>
+        </div>
         
         {game && (
           <Button
@@ -84,10 +118,6 @@ export default function Lobby() {
           </Button>
         )}
       </div>
-
-      <h1 className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl font-bold mb-6 sm:mb-8 font-primary text-center leading-tight">
-        yappers.live
-      </h1>
       
       {error && (
         <Section variant="error">
@@ -125,6 +155,15 @@ export default function Lobby() {
               {loading ? 'Creating...' : 'Create Game'}
             </Button>
           </FormRow>
+          <Button
+            variant="secondary"
+            size="small"
+            onMouseUp={handleBackToHome}
+            className="text-xs sm:text-sm mt-2"
+            disabled={true}
+          >
+            Mode: Team Draft
+          </Button>
         </Section>
       )}
 
@@ -176,6 +215,35 @@ export default function Lobby() {
             currentPlayerId={playerId || ''}
             maxPlayers={game.max_players}
           />
+          
+          {playerId === game.host_id && (
+            <div className="mt-4 pt-4">
+              {game.players.length < 3 ? (
+                <div className="text-center">
+                  <p className="text-pencil font-secondary text-sm mb-2">
+                    Need at least 3 players to start the game
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="large"
+                    disabled={true}
+                    className="w-full text-lg sm:text-xl py-3 opacity-50 cursor-not-allowed"
+                  >
+                    Start Game (Need {3 - game.players.length} more player{3 - game.players.length !== 1 ? 's' : ''})
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="large"
+                  onMouseUp={handleStartGame}
+                  className="w-full text-lg sm:text-xl py-3"
+                >
+                  Start Game
+                </Button>
+              )}
+            </div>
+          )}
         </Section>
       )}
 

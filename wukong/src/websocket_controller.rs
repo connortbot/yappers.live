@@ -9,8 +9,6 @@ use axum::extract::ws::{WebSocket, Message};
 use futures::{StreamExt, SinkExt};
 use crate::game::game_manager::GameManager;
 use crate::game::messages::WebSocketMessage;
-use crate::game::messages::GameMessage::PlayerLeft;
-use crate::game::messages::client_safe_ws_message;
 
 #[utoipa::path(
     get,
@@ -72,6 +70,11 @@ async fn handle_socket(
                                 }
                                 
                                 if let Some(auth_token) = &ws_message.auth_token {
+                                    if auth_token == crate::team_draft::state::SERVER_ONLY_AUTHORIZED {
+                                        println!("[WS:: SECURITY: Client attempted to use server-only auth token from player {}]", player_id);
+                                        continue;
+                                    }
+                                    
                                     match game_manager.is_authorized(&player_id, auth_token).await {
                                         Ok(false) => {
                                             println!("[WS:: Unauthorized message from player {}]", player_id);
@@ -85,18 +88,8 @@ async fn handle_socket(
                                     }
                                 }
                                 
-                                match &ws_message.message {
-                                    PlayerLeft { player_id, .. } => {
-                                        if let Err(e) = game_manager.handle_player_left(&game_id, player_id).await {
-                                            println!("[WS] Error handling player left: {}", e);
-                                        }
-                                    }
-                                    _ => {
-                                        let client_safe_ws_message = client_safe_ws_message(ws_message);
-                                        if let Err(e) = game_manager.broadcast_to_game(&game_id, client_safe_ws_message).await {
-                                            println!("[WS] Error broadcasting message: {}", e);
-                                        }
-                                    }
+                                if let Err(e) = GameManager::enqueue_message_with_manager(game_manager.clone(), &game_id, ws_message).await {
+                                    println!("[WS] Error enqueuing message: {}", e);
                                 }
                             }
                             Err(e) => {

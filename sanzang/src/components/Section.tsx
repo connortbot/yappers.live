@@ -6,7 +6,7 @@ interface SectionProps {
 }
 
 export function Section({ children, title, className = '', variant = 'default' }: SectionProps) {
-  const baseClasses = "mb-6 sm:mb-8 p-3 sm:p-4 rounded-lg"
+  const baseClasses = "bg-white mb-6 sm:mb-8 p-3 sm:p-4 rounded-lg"
   
   const variantClasses = {
     default: "border-2 border-pencil",

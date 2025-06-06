@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react'
 import { useGameAPI } from '../hooks/useGameAPI'
+import { useTeamDraft } from '../hooks/useTeamDraft'
 import type { Game } from '../lib/bindings/Game'
 import type { Player } from '../lib/bindings/Player'
 import type { WebSocketMessage } from '../lib/bindings/WebSocketMessage'
 import type { GameMessage } from '../lib/bindings/GameMessage'
+import type { TeamDraftManager } from '../lib/bindings/TeamDraftManager'
 import { createWukongWebSocket } from '../lib/wukongClient'
+import { GameStartedMessage } from '../lib/bindings/GameStartedMessage'
 
 interface GameContextState {
   game: Game | null
@@ -16,17 +19,28 @@ interface GameContextState {
   connecting: boolean
   
   messages: string[]
+  latestEvent: GameMessage | null
+  
+  // Game mode states
+  teamDraftState: TeamDraftManager | null
   
   loading: boolean
   error: string | null
   
   createGame: (username: string) => Promise<void>
   joinGame: (username: string, gameCode: string) => Promise<void>
+  getPlayerUsername: (playerId: string) => string | null
   connectWebSocket: () => void
   disconnect: () => void
   sendMessage: (message: GameMessage) => void
   clearError: () => void
   leaveGame: () => void
+  
+  createPoolMessage: (pool: string) => GameMessage
+  createCompetitionMessage: (competition: string) => GameMessage
+  createStartDraftMessage: (starting_drafter_id: string) => GameMessage
+  createAwardPointMessage: (player_id: string) => GameMessage
+  createBackToLobbyMessage: () => GameMessage
 }
 
 const GameContext = createContext<GameContextState | null>(null)
@@ -45,6 +59,16 @@ interface GameProviderProps {
 
 export function GameProvider({ children }: GameProviderProps) {
   const { createGame: createGameAPI, joinGame: joinGameAPI } = useGameAPI()
+  const {
+    teamDraftState,
+    updateTeamDraftState,
+    handleTeamDraftMessage,
+    createPoolMessage,
+    createCompetitionMessage,
+    resetTeamDraftState,
+    createStartDraftMessage,
+    createAwardPointMessage
+  } = useTeamDraft()
   
   const [game, setGame] = useState<Game | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
@@ -54,13 +78,17 @@ export function GameProvider({ children }: GameProviderProps) {
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [messages, setMessages] = useState<string[]>([])
-  
+  const [latestEvent, setLatestEvent] = useState<GameMessage | null>(null)
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   const wsRef = useRef<WebSocket | null>(null)
+  const shouldReconnectRef = useRef<boolean>(false)
 
   const handleGameMessage = useCallback((message: GameMessage) => {
+    handleTeamDraftMessage(message)
+    
     switch (message.type) {
       case 'PlayerJoined':
         setGame((prev: Game | null) => {
@@ -115,19 +143,29 @@ export function GameProvider({ children }: GameProviderProps) {
         break
         
       case 'GameStarted':
-        setMessages(prev => [...prev, `🎮 Game started: ${message.game_type}`])
-        break
+        setLatestEvent(message)
+        setMessages(prev => [...prev, `🎮 Game started: ${(message as GameStartedMessage).game_type.type}`])
         
+        const gameStartedMessage = message as GameStartedMessage
+        if (gameStartedMessage.game_type.type === 'TeamDraft' && gameStartedMessage.initial_team_draft_state) {
+          updateTeamDraftState(gameStartedMessage.initial_team_draft_state)
+        }
+        break
+      case 'BackToLobby':
+        setLatestEvent(message)
+        setMessages(prev => [...prev, `🏠 Returning to lobby...`])        
+        break
       default:
-        console.warn('Unknown message type:', message)
+        setLatestEvent(message)
     }
-  }, [])
+  }, [handleTeamDraftMessage, updateTeamDraftState])
 
   const connectWebSocketWithGameData = useCallback((gameData: Game, playerIdData: string) => {
     if (connected || connecting) return
     
     setConnecting(true)
     setError(null)
+    shouldReconnectRef.current = true
     
     const ws = createWukongWebSocket(`${gameData.id}/${playerIdData}`)
     
@@ -147,10 +185,20 @@ export function GameProvider({ children }: GameProviderProps) {
       }
     }
 
-    ws.onclose = () => {
-      console.log('Disconnected from websocket')
+    ws.onclose = (event) => {
+      console.log('Disconnected from websocket', event.code, event.reason)
       setConnected(false)
       setConnecting(false)
+      
+      // Auto-reconnect in development mode if we should reconnect and it wasn't a manual disconnect
+      if (import.meta.env.DEV && shouldReconnectRef.current && event.code !== 1000) {
+        console.log('Attempting to reconnect in 1 second...')
+        setTimeout(() => {
+          if (shouldReconnectRef.current && !connected && !connecting) {
+            connectWebSocketWithGameData(gameData, playerIdData)
+          }
+        }, 1000)
+      }
     }
 
     ws.onerror = (error) => {
@@ -251,7 +299,12 @@ export function GameProvider({ children }: GameProviderProps) {
     }
   }, [joinGameAPI, connectWebSocketWithGameData])
 
+  const getPlayerUsername = useCallback((playerId: string) => {
+    return game?.players.find((p: Player) => p.id === playerId)?.username || null
+  }, [game?.players])
+
   const disconnect = useCallback(() => {
+    shouldReconnectRef.current = false
     if (wsRef.current) {
       wsRef.current.close()
       wsRef.current = null
@@ -261,29 +314,31 @@ export function GameProvider({ children }: GameProviderProps) {
     }
   }, [])
 
-  const sendMessage = (message: GameMessage) => {
+  const sendMessage = useCallback((message: GameMessage) => {
     if (wsRef.current && message) {
       wsRef.current.send(JSON.stringify({
         game_id: game?.id,
         auth_token: authToken,
         player_id: playerId,
-        message: message
+        message: message,
       }))
     }
-  }
+  }, [game?.id, authToken, playerId])
 
   const clearError = useCallback(() => {
     setError(null)
   }, [])
 
   const leaveGame = useCallback(() => {
+    shouldReconnectRef.current = false
     disconnect()
     setGame(null)
     setPlayerId(null)
     setUsername(null)
     setMessages([])
     setError(null)
-  }, [disconnect])
+    resetTeamDraftState()
+  }, [disconnect, resetTeamDraftState])
 
   useEffect(() => {
     return () => {
@@ -291,6 +346,12 @@ export function GameProvider({ children }: GameProviderProps) {
         wsRef.current.close()
       }
     }
+  }, [])
+
+  const createBackToLobbyMessage = useCallback((): GameMessage => {
+    return {
+      type: 'BackToLobby'
+    } as GameMessage
   }, [])
 
   const contextValue: GameContextState = {
@@ -301,15 +362,23 @@ export function GameProvider({ children }: GameProviderProps) {
     connected,
     connecting,
     messages,
+    teamDraftState,
     loading,
+    latestEvent,
     error,
     createGame,
     joinGame,
+    getPlayerUsername,
     connectWebSocket,
     disconnect,
     sendMessage,
     clearError,
-    leaveGame
+    leaveGame,
+    createPoolMessage,
+    createCompetitionMessage,
+    createStartDraftMessage,
+    createAwardPointMessage,
+    createBackToLobbyMessage
   }
 
   return (

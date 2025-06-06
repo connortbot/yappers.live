@@ -1,15 +1,19 @@
 use std::collections::HashMap;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{RwLock, broadcast, mpsc};
 use uuid::Uuid;
 use chrono;
 use serde::Serialize;
 use rand::{Rng, rng};
 use crate::game::messages::{GameMessage, WebSocketMessage};
+use crate::game::queue::{GameProcessor, QueuedMessage};
 use crate::error::{ErrorResponse, ErrorCode};
 use serde_json;
 use utoipa::ToSchema;
 use serde::Deserialize;
 use ts_rs::TS;
+use crate::team_draft::state::TeamDraftManager;
+use std::sync::Arc;
+use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
 #[ts(export)]
@@ -28,6 +32,9 @@ pub struct Game {
     pub players: Vec<Player>,
     pub max_players: u8,
     pub created_at: i32,
+    
+    // Game mode managers
+    pub team_draft: TeamDraftManager,
 }
 
 pub struct GameEntry {
@@ -43,6 +50,10 @@ pub struct GameManager {
     game_broadcasters: RwLock<HashMap<String, broadcast::Sender<String>>>,
     player_to_auth_token: RwLock<HashMap<String, String>>,
     code_to_game: RwLock<HashMap<String, String>>,
+    
+    // for message processing - just stores the senders
+    game_processors: RwLock<HashMap<String, mpsc::Sender<QueuedMessage>>>, // game_id -> sender
+    processor_handles: RwLock<HashMap<String, JoinHandle<()>>>, // game_id -> processing task handle
 }
 
 impl GameManager {
@@ -102,6 +113,11 @@ impl GameManager {
             players: vec![host],
             max_players: 8,
             created_at: chrono::Utc::now().timestamp() as i32,
+            team_draft: TeamDraftManager::new(
+                host_id.clone(),
+                0,
+                8,
+            ),
         };
 
         let mut games = self.games.write().await;
@@ -199,15 +215,14 @@ impl GameManager {
         let mut player_to_auth_token = self.player_to_auth_token.write().await;
         player_to_auth_token.insert(player_id.clone(), auth_token.clone());
 
-        let player_joined = GameMessage::PlayerJoined {
-            username: player_username,
-            player_id: player_id.clone(),
-        };
         let ws_message = WebSocketMessage {
             game_id: game_id.clone(),
-            message: player_joined,
+            message: GameMessage::PlayerJoined {
+                username: player_username.clone(),
+                player_id: player_id.clone(),
+            },
             player_id: player_id.clone(),
-            auth_token: None, // don't broadcast auth tokens to client
+            auth_token: None,
         };
 
         if let Err(e) = self.broadcast_to_game(&game_id, ws_message).await {
@@ -312,6 +327,8 @@ impl GameManager {
             code_to_game.remove(&code);
         }
 
+        self.cleanup_game_processor(game_id).await;
+
         println!("[GameManager] Cleaned up empty game: {}", game_id);
         Ok(())
     }
@@ -351,5 +368,75 @@ impl GameManager {
     pub async fn get_game(&self, game_id: &str) -> GameResult<Option<Game>> {
         let games = self.games.read().await;
         Ok(games.get(game_id).cloned())
+    }
+
+    pub async fn modify_game<F, R>(&self, game_id: &str, f: F) -> GameResult<R>
+    where
+        F: FnOnce(&mut Game) -> R,
+    {
+        let mut games = self.games.write().await;
+        let game = games.get_mut(game_id).ok_or(ErrorResponse {
+            error: ErrorCode::GameNotFound,
+            message: "Game not found".to_string(),
+        })?;
+        Ok(f(game))
+    }
+
+    pub async fn ensure_game_processor_with_manager(
+        game_manager: Arc<GameManager>, 
+        game_id: &str
+    ) -> GameResult<()> {
+        let mut processors = game_manager.game_processors.write().await;
+        let mut handles = game_manager.processor_handles.write().await;
+        
+        if !processors.contains_key(game_id) {
+            let (processor, rx) = GameProcessor::new();
+            
+            let game_id_clone = game_id.to_string();
+            let game_manager_clone = game_manager.clone();
+            let handle = tokio::spawn(async move {
+                GameProcessor::process_messages(rx, game_id_clone, game_manager_clone).await;
+            });
+            
+            processors.insert(game_id.to_string(), processor.sender);
+            handles.insert(game_id.to_string(), handle);
+        }
+        Ok(())
+    }
+    
+    pub async fn enqueue_message_with_manager(
+        game_manager: Arc<GameManager>,
+        game_id: &str, 
+        message: WebSocketMessage
+    ) -> GameResult<()> {
+        GameManager::ensure_game_processor_with_manager(game_manager.clone(), game_id).await?;
+        
+        let processors = game_manager.game_processors.read().await;
+        if let Some(sender) = processors.get(game_id) {
+            let queued_message = QueuedMessage {
+                timestamp: std::time::Instant::now(),
+                message,
+            };
+            
+            sender.send(queued_message).await
+                .map_err(|_| ErrorResponse {
+                    error: ErrorCode::InternalServerError,
+                    message: "Game processor channel closed".to_string(),
+                })?;
+        }
+        Ok(())
+    }
+    
+    pub async fn cleanup_game_processor(&self, game_id: &str) {
+        let mut processors = self.game_processors.write().await;
+        let mut handles = self.processor_handles.write().await;
+        
+        if let Some(sender) = processors.remove(game_id) {
+            drop(sender); // Close the channel - this makes rx.recv() return None
+        }
+        
+        if let Some(handle) = handles.remove(game_id) {
+            handle.abort(); // Force stop the task (backup in case it's stuck)
+        }
     }
 }

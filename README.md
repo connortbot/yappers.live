@@ -19,3 +19,10 @@ Postgres + Auth:
 
 Cache:
 I wanna use Valkey but like, I really don't need it.
+
+
+### Local Dev
+- sanzang: `npm run dev`
+- wukong: `cargo watch -x run`
+
+Or with the `Dockerfile` compose.

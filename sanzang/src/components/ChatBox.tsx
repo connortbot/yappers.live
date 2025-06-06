@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Input } from './Input'
 import { Button } from './Button'
 import { FormRow } from './FormRow'
@@ -13,13 +13,22 @@ interface ChatBoxProps {
 
 export function ChatBox({ messages, onSendMessage, placeholder = "Type a message", username }: ChatBoxProps) {
   const [message, setMessage] = useState('')
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
 
   const handleSend = () => {
-    if (message.trim()) {
+    if (message) {
       const chatMessage: GameMessage = {
         type: 'ChatMessage',
         username: username,
-        message: message.trim(),
+        message: message,
       }
       onSendMessage(chatMessage)
       setMessage('')
@@ -40,6 +49,7 @@ export function ChatBox({ messages, onSendMessage, placeholder = "Type a message
             {msg}
           </div>
         ))}
+        <div ref={messagesEndRef} />
       </div>
       <FormRow>
         <Input

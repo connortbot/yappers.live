@@ -15,6 +15,7 @@ use error::ErrorResponse;
 
 mod game;
 use game::game_manager::GameManager;
+mod team_draft;
 
 #[derive(OpenApi)]
 #[openapi(

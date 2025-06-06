@@ -10,7 +10,7 @@ export const Button = ({
   className,
   ...props
 }: ButtonProps) => {
-  const baseStyles = "rounded-lg transform transition-all duration-150 active:translate-y-1 touch-manipulation select-none";
+  const baseStyles = "bg-white rounded-lg transform transition-all duration-150 active:translate-y-1 touch-manipulation select-none";
   
   const variantStyles = {
     primary: "font-primary text-black bg-background shadow-black border-2 border-black font-bold",
