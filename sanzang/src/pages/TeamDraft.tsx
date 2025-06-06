@@ -163,7 +163,6 @@ export default function TeamDraft() {
   }
 
   useEffect(() => {
-    console.log('latestEvent', latestEvent)
     if (latestEvent) {
       if (latestEvent.type === 'TeamDraft') {
         switch (latestEvent.msg_type) {
@@ -210,13 +209,6 @@ export default function TeamDraft() {
       }
     }
   }, [latestEvent])
-
-  // StartDraft handler
-  useEffect(() => {
-    if (latestEvent?.type === 'TeamDraft' && latestEvent.msg_type === 'StartDraft' && teamDraftState?.round_data.current_drafter_id) {
-      console.log('StartDraft event received')
-    }
-  }, [latestEvent, teamDraftState?.round_data.current_drafter_id])
 
   if (!game || !teamDraftState) {
     return (
