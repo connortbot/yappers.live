@@ -34,3 +34,12 @@ impl std::fmt::Debug for ErrorResponse {
         write!(f, "ErrorResponse {{ error: {:?}, message: {} }}", self.error, self.message)
     }
 }
+
+impl From<String> for ErrorResponse {
+    fn from(error_message: String) -> Self {
+        ErrorResponse {
+            error: ErrorCode::InternalServerError,
+            message: format!("Key building error (programming bug): {}", error_message),
+        }
+    }
+}

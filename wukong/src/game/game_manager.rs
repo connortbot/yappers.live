@@ -15,7 +15,7 @@ use crate::team_draft::state::TeamDraftManager;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use crate::cache::redis_client::RedisClient;
-use crate::cache::key_builder::KeyBuilder;
+use crate::cache::key_builder::key;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
 #[ts(export)]
@@ -110,8 +110,9 @@ impl GameManager {
 
         let game_code = loop {
             let code = self.generate_game_code();
-            let key = KeyBuilder::new("game_code").field(code.clone()).get_key();
-            match self.redis_client.get(&key).await {
+            let key_string = key("game_code")?.field(code.clone())?.get_key()?;
+            
+            match self.redis_client.get(&key_string).await {
                 Ok(Some(_)) => {
                     continue;
                 }
@@ -166,8 +167,13 @@ impl GameManager {
         games.insert(game_id.clone(), game.clone());
         player_to_game.insert(host_id, game_id.clone());
         
-        let key = KeyBuilder::new("game_code").field(game_code).get_key();
-        self.redis_client.set(&key, game_id).await.unwrap();
+        let key_string = key("game_code")?.field(game_code)?.get_key()?;
+        
+        self.redis_client.set(&key_string, &game_id).await
+            .map_err(|e| ErrorResponse {
+                error: ErrorCode::InternalServerError,
+                message: format!("Redis error: {}", e),
+            })?;
 
         Ok(GameEntry {
             game: game,
@@ -186,8 +192,9 @@ impl GameManager {
         let game_code = game_code.to_uppercase();
 
         let game_id = {
-            let key = KeyBuilder::new("game_code").field(&game_code).get_key();
-            self.redis_client.get_required(&key, ErrorResponse{
+            let key_string = key("game_code")?.field(&game_code)?.get_key()?;
+                
+            self.redis_client.get_required(&key_string, ErrorResponse{
                 error: ErrorCode::GameNotFound,
                 message: "Game not found".to_string(),
             }).await?
@@ -350,8 +357,13 @@ impl GameManager {
         game_broadcasters.remove(game_id);
         
         if let Some(code) = game_code {
-            let key = KeyBuilder::new("game_code").field(&code).get_key();
-            self.redis_client.del(&key).await.unwrap();
+            let key_string = key("game_code")?.field(&code)?.get_key()?;
+                
+            self.redis_client.del(&key_string).await
+                .map_err(|e| ErrorResponse {
+                    error: ErrorCode::InternalServerError,
+                    message: format!("Redis error: {}", e),
+                })?;
         }
 
         self.cleanup_game_processor(game_id).await;
