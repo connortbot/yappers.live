@@ -43,3 +43,8 @@ impl From<String> for ErrorResponse {
         }
     }
 }
+
+pub const REDIS_ERROR: fn(&str) -> ErrorResponse = |e| ErrorResponse {
+    error: ErrorCode::InternalServerError,
+    message: format!("Redis error: {}", e),
+};

@@ -25,6 +25,20 @@ impl KeySchemas {
                 KeySegment::Field("code"),
             ],
         });
+
+        schemas.insert("player_to_game", KeySchema {
+            pattern: vec![
+                KeySegment::Fixed("player_to_game"),
+                KeySegment::Field("player_id"),
+            ],
+        });
+        
+        schemas.insert("player_auth", KeySchema {
+            pattern: vec![
+                KeySegment::Fixed("player_auth"),
+                KeySegment::Field("player_id"),
+            ],
+        });
         
         Self { schemas }
     }

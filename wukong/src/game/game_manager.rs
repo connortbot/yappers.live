@@ -6,7 +6,7 @@ use serde::Serialize;
 use rand::{Rng, rng};
 use crate::game::messages::{GameMessage, WebSocketMessage};
 use crate::game::queue::{GameProcessor, QueuedMessage};
-use crate::error::{ErrorResponse, ErrorCode};
+use crate::error::{ErrorResponse, ErrorCode, REDIS_ERROR};
 use serde_json;
 use utoipa::ToSchema;
 use serde::Deserialize;
@@ -48,11 +48,8 @@ pub type GameResult<T> = Result<T, ErrorResponse>;
 pub struct GameManager {
     redis_client: RedisClient,
     
-    
     games: RwLock<HashMap<String, Game>>,
-    player_to_game: RwLock<HashMap<String, String>>,
     game_broadcasters: RwLock<HashMap<String, broadcast::Sender<String>>>,
-    player_to_auth_token: RwLock<HashMap<String, String>>,
     
     // for message processing - just stores the senders
     game_processors: RwLock<HashMap<String, mpsc::Sender<QueuedMessage>>>, // game_id -> sender
@@ -68,9 +65,7 @@ impl GameManager {
         Self {
             redis_client,
             games: RwLock::new(HashMap::new()),
-            player_to_game: RwLock::new(HashMap::new()),
             game_broadcasters: RwLock::new(HashMap::new()),
-            player_to_auth_token: RwLock::new(HashMap::new()),
             game_processors: RwLock::new(HashMap::new()),
             processor_handles: RwLock::new(HashMap::new()),
         }
@@ -89,11 +84,12 @@ impl GameManager {
     }
 
     pub async fn is_authorized(&self, player_id: &str, auth_token: &str) -> GameResult<bool> {
-        let player_to_auth_token = self.player_to_auth_token.read().await;
-        let authorized = player_to_auth_token.get(player_id)
-            .map(|token| token == auth_token)
-            .unwrap_or(false);
-        Ok(authorized)
+        let auth_key = key("player_auth")?.field(player_id)?.get_key()?;
+        match self.redis_client.get(&auth_key).await {
+            Ok(Some(stored_token)) => Ok(stored_token == auth_token),
+            Ok(None) => Ok(false),
+            Err(e) => Err(REDIS_ERROR(&e.to_string())),
+        }
     }
 
     pub async fn create_game(&self, host_username: String) -> GameResult<GameEntry> {
@@ -120,10 +116,7 @@ impl GameManager {
                     break code;
                 }
                 Err(e) => {
-                    return Err(ErrorResponse {
-                        error: ErrorCode::InternalServerError,
-                        message: format!("Redis error: {}", e),
-                    });
+                    return Err(REDIS_ERROR(&e.to_string()));
                 }
             }
         };
@@ -148,32 +141,32 @@ impl GameManager {
         };
 
         let mut games = self.games.write().await;
-        let mut player_to_game = self.player_to_game.write().await;
         let mut game_broadcasters = self.game_broadcasters.write().await;
-        let mut player_to_auth_token = self.player_to_auth_token.write().await;
 
-        if player_to_game.contains_key(&host_id) {
+        let player_key = key("player_to_game")?.field(&host_id)?.get_key()?;
+        if let Ok(Some(_)) = self.redis_client.get(&player_key).await {
             return Err(ErrorResponse{
                 error: ErrorCode::PlayerAlreadyInGame,
                 message: "Player already in a game".to_string(),
             });
         }
 
-        player_to_auth_token.insert(host_id.clone(), auth_token.clone());
+        let auth_key = key("player_auth")?.field(&host_id)?.get_key()?;
+        self.redis_client.set(&auth_key, &auth_token).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
 
         let (tx, _) = broadcast::channel(100);
         game_broadcasters.insert(game_id.clone(), tx);
 
         games.insert(game_id.clone(), game.clone());
-        player_to_game.insert(host_id, game_id.clone());
+        
+        self.redis_client.set(&player_key, &game_id).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
         
         let key_string = key("game_code")?.field(game_code)?.get_key()?;
         
         self.redis_client.set(&key_string, &game_id).await
-            .map_err(|e| ErrorResponse {
-                error: ErrorCode::InternalServerError,
-                message: format!("Redis error: {}", e),
-            })?;
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
 
         Ok(GameEntry {
             game: game,
@@ -218,16 +211,16 @@ impl GameManager {
             username: player_username.clone(),
         };
 
+        let player_key = key("player_to_game")?.field(&player_id)?.get_key()?;
+        if let Ok(Some(_)) = self.redis_client.get(&player_key).await {
+            return Err(ErrorResponse{
+                error: ErrorCode::PlayerAlreadyInGame,
+                message: "Player already in a game".to_string(),
+            });
+        }
+
         let updated_game = {
             let mut games = self.games.write().await;
-            let mut player_to_game = self.player_to_game.write().await;
-
-            if player_to_game.contains_key(&player_id) {
-                return Err(ErrorResponse{
-                    error: ErrorCode::PlayerAlreadyInGame,
-                    message: "Player already in a game".to_string(),
-                });
-            }
 
             let game = games.get_mut(&game_id).ok_or(ErrorResponse{
                 error: ErrorCode::GameNotFound,
@@ -241,13 +234,16 @@ impl GameManager {
             }
 
             game.players.push(player);
-            player_to_game.insert(player_id.clone(), game_id.clone());
+            
+            self.redis_client.set(&player_key, &game_id).await
+                .map_err(|e| REDIS_ERROR(&e.to_string()))?;
             
             game.clone()
         };
 
-        let mut player_to_auth_token = self.player_to_auth_token.write().await;
-        player_to_auth_token.insert(player_id.clone(), auth_token.clone());
+        let auth_key = key("player_auth")?.field(&player_id)?.get_key()?;
+        self.redis_client.set(&auth_key, &auth_token).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
 
         let ws_message = WebSocketMessage {
             game_id: game_id.clone(),
@@ -300,48 +296,53 @@ impl GameManager {
     }
 
     pub async fn remove_player_from_game(&self, player_id: &str) -> GameResult<()> {
-        let game_id = {
-            let player_to_game = self.player_to_game.read().await;
-            player_to_game.get(player_id).cloned()
+        let player_key = key("player_to_game")?.field(player_id)?.get_key()?;
+        let game_id = match self.redis_client.get(&player_key).await {
+            Ok(Some(id)) => id,
+            Ok(None) => return Ok(()),
+            Err(e) => return Err(REDIS_ERROR(&e.to_string())),
         };
 
-        if let Some(game_id) = game_id {
-            let (should_cleanup_game, player_info) = {
-                let mut games = self.games.write().await;
-                let mut player_to_game = self.player_to_game.write().await;
+        let (should_cleanup_game, player_info) = {
+            let mut games = self.games.write().await;
 
-                if let Some(game) = games.get_mut(&game_id) {
-                    let player_info = game.players.iter()
-                        .find(|p| p.id == player_id)
-                        .map(|p| (p.username.clone(), p.id.clone()));
-                    game.players.retain(|p| p.id != player_id);
-                    player_to_game.remove(player_id);
+            if let Some(game) = games.get_mut(&game_id) {
+                let player_info = game.players.iter()
+                    .find(|p| p.id == player_id)
+                    .map(|p| (p.username.clone(), p.id.clone()));
+                game.players.retain(|p| p.id != player_id);
+                
+                self.redis_client.del(&player_key).await
+                    .map_err(|e| REDIS_ERROR(&e.to_string()))?;
 
-                    let should_cleanup = game.players.is_empty();
-                    (should_cleanup, player_info)
-                } else {
-                    (false, None)
-                }
+                let auth_key = key("player_auth")?.field(player_id)?.get_key()?;
+                self.redis_client.del(&auth_key).await
+                    .map_err(|e| REDIS_ERROR(&e.to_string()))?;
+
+                let should_cleanup = game.players.is_empty();
+                (should_cleanup, player_info)
+            } else {
+                (false, None)
+            }
+        };
+
+        if let Some((username, player_id)) = player_info {
+            let player_disconnected = GameMessage::PlayerDisconnected {
+                username: username.clone(),
+                player_id: player_id.clone(),
+            };
+            let ws_message = WebSocketMessage {
+                game_id: game_id.clone(),
+                message: player_disconnected,
+                player_id: player_id.clone(),
+                auth_token: None,
             };
 
-            if let Some((username, player_id)) = player_info {
-                let player_disconnected = GameMessage::PlayerDisconnected {
-                    username: username.clone(),
-                    player_id: player_id.clone(),
-                };
-                let ws_message = WebSocketMessage {
-                    game_id: game_id.clone(),
-                    message: player_disconnected,
-                    player_id: player_id.clone(),
-                    auth_token: None,
-                };
+            let _ = self.broadcast_to_game(&game_id, ws_message).await;
+        }
 
-                let _ = self.broadcast_to_game(&game_id, ws_message).await;
-            }
-
-            if should_cleanup_game {
-                self.cleanup_empty_game(&game_id).await?;
-            }
+        if should_cleanup_game {
+            self.cleanup_empty_game(&game_id).await?;
         }
 
         Ok(())
@@ -360,10 +361,7 @@ impl GameManager {
             let key_string = key("game_code")?.field(&code)?.get_key()?;
                 
             self.redis_client.del(&key_string).await
-                .map_err(|e| ErrorResponse {
-                    error: ErrorCode::InternalServerError,
-                    message: format!("Redis error: {}", e),
-                })?;
+                .map_err(|e| REDIS_ERROR(&e.to_string()))?;
         }
 
         self.cleanup_game_processor(game_id).await;
