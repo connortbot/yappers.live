@@ -56,6 +56,14 @@ impl KeySchemas {
                 vec![KeySegment::Fixed(vec!["code"])],
             ],
         });
+
+        schemas.insert("player_usernames", KeySchema {
+            base_pattern: vec![
+                KeySegment::Fixed(vec!["player_usernames"]),
+                KeySegment::Field("player_id"),
+            ],
+            allowed_extensions: vec![],
+        });
         
         Self { schemas }
     }

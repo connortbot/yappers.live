@@ -123,8 +123,13 @@ impl GameManager {
 
         let host = Player {
             id: host_id.clone(),
-            username: host_username,
+            username: host_username.clone(),
         };
+
+        // let usernames_key = key("player_usernames")?.field(&host_id)?.get_key()?;
+        // self.redis_client.set(&usernames_key, &host_username).await
+        //     .map_err(|e| REDIS_ERROR(&e.to_string()))?;
+
 
         let game = Game {
             id: game_id.clone(),
