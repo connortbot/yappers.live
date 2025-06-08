@@ -27,3 +27,6 @@ I wanna use Valkey but like, I really don't need it.
 valkey: 
 - `docker-compose -f docker-compose-local.yml up -d`
 - `valkey-cli`, `MONITOR`
+
+### Repo Complexity
+Score: `4`

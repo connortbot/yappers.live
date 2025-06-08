@@ -16,6 +16,7 @@ use error::ErrorResponse;
 mod game;
 use game::game_manager::GameManager;
 mod team_draft;
+mod cache;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -55,7 +56,7 @@ async fn ping() -> &'static str {
 async fn main() {
     dotenv::dotenv().ok();
 
-    let game_manager = Arc::new(GameManager::new());
+    let game_manager = Arc::new(GameManager::new().await);
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
