@@ -1,9 +1,7 @@
 use redis::{Client, AsyncCommands, RedisResult, ToRedisArgs};
-use redis::aio::MultiplexedConnection;
+use redis::aio::{MultiplexedConnection, PubSub};
 use crate::error::{ErrorResponse, ErrorCode};
 use std::collections::{HashMap, HashSet};
-
-pub type CacheResult<T> = Result<T, ErrorResponse>;
 
 pub trait RedisKey: ToRedisArgs + Send + Sync {}
 pub trait RedisValue: ToRedisArgs + Send + Sync {}
@@ -13,9 +11,16 @@ impl<T: ToRedisArgs + Send + Sync> RedisKey for T {}
 impl<T: ToRedisArgs + Send + Sync> RedisValue for T {}
 impl<T: ToRedisArgs + Send + Sync> RedisField for T {}
 
+#[derive(Debug, Clone)]
+pub struct PubSubMessage {
+    pub channel: String,
+    pub payload: String,
+}
+
 #[derive(Clone)]
 pub struct RedisClient {
     connection: MultiplexedConnection,
+    client: Client,
 }
 
 impl RedisClient {
@@ -23,7 +28,10 @@ impl RedisClient {
         let client = Client::open(redis_url)?;
         let connection = client.get_multiplexed_tokio_connection().await?;
         
-        Ok(RedisClient { connection })
+        Ok(RedisClient { 
+            connection,
+            client,
+        })
     }
 
     pub async fn ping(&self) -> RedisResult<String> {
@@ -130,5 +138,26 @@ impl RedisClient {
                 message: format!("Redis error: {}", e),
             }),
         }
+    }
+
+    // PUB/SUB METHODS
+
+    pub async fn publish(&self, channel: impl RedisKey, message: impl RedisValue) -> RedisResult<usize> {
+        let mut conn = self.connection.clone(); // Cheap clone - same TCP connection
+        conn.publish(channel, message).await
+    }
+
+    pub async fn get_pubsub(&self) -> RedisResult<PubSub> {
+        self.client.get_async_pubsub().await
+    }
+
+    pub async fn create_shared_pubsub(&self, patterns: Vec<String>) -> RedisResult<PubSub> {
+        let mut pubsub = self.get_pubsub().await?;
+        
+        for pattern in patterns {
+            pubsub.psubscribe(pattern).await?;
+        }
+        
+        Ok(pubsub)
     }
 }
