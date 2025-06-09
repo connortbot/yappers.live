@@ -57,6 +57,11 @@ async fn main() {
     dotenv::dotenv().ok();
 
     let game_manager = Arc::new(GameManager::new().await);
+    
+    if let Err(e) = game_manager.clone().start_pubsub().await {
+        eprintln!("Failed to start pub/sub routing: {}", e);
+        std::process::exit(1);
+    }
 
     let cors = CorsLayer::new()
         .allow_origin(Any)

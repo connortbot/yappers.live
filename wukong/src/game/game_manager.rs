@@ -5,7 +5,7 @@ use chrono;
 use serde::Serialize;
 use rand::{Rng, rng};
 use crate::game::messages::{GameMessage, WebSocketMessage};
-use crate::game::queue::{GameProcessor, QueuedMessage};
+use crate::game::queue::{GameProcessor, QueuedMessage, BroadcastMessageChunk};
 use crate::error::{ErrorResponse, ErrorCode, REDIS_ERROR};
 use serde_json;
 use utoipa::ToSchema;
@@ -56,8 +56,8 @@ pub struct GameManager {
     game_processors: Arc<RwLock<HashMap<String, mpsc::Sender<QueuedMessage>>>>, // game_id -> sender
     processor_handles: RwLock<HashMap<String, JoinHandle<()>>>, // game_id -> processing task handle
     
-    // Shared pub/sub routing task handle
-    _pubsub_routing_handle: JoinHandle<()>,
+    // Optional pub/sub task handle (set after construction)
+    pubsub_routing_handle: RwLock<Option<JoinHandle<()>>>,
 }
 
 impl GameManager {
@@ -67,14 +67,29 @@ impl GameManager {
             
         let redis_client = RedisClient::new(redis_url).await.unwrap();
         
-        // psubscribe to all game channels
-        let mut pubsub = redis_client.create_shared_pubsub(vec!["game_channel::*".to_string()]).await.unwrap();
-        
         let game_processors: Arc<RwLock<HashMap<String, mpsc::Sender<QueuedMessage>>>> = 
             Arc::new(RwLock::new(HashMap::new()));
-        let game_processors_clone = game_processors.clone();
         
-        // BACKGROUND TASK - route messages from the pubsub to the game processors
+        Self {
+            redis_client,
+            games: RwLock::new(HashMap::new()),
+            game_broadcasters: RwLock::new(HashMap::new()),
+            game_processors,
+            processor_handles: RwLock::new(HashMap::new()),
+            pubsub_routing_handle: RwLock::new(None),
+        }
+    }
+    
+    pub async fn start_pubsub(self: Arc<Self>) -> GameResult<()> {
+        let mut pubsub = self.redis_client.create_shared_pubsub(vec!["game_channel::*".to_string()]).await
+            .map_err(|e| ErrorResponse {
+                error: ErrorCode::InternalServerError,
+                message: format!("Failed to create pub/sub connection: {}", e),
+            })?;
+        
+        let game_manager_clone = self.clone();
+        
+        // BACKGROUND TASK - route messages from Redis pub/sub
         let pubsub_routing_handle = tokio::spawn(async move {
             while let Some(msg) = pubsub.on_message().next().await {
                 let channel = msg.get_channel_name();
@@ -83,34 +98,26 @@ impl GameManager {
                     Err(_) => continue,
                 };
 
-                println!("[GameManager] Received message on channel: {}", channel);
+                println!("[GameManager] Received broadcast message on channel: {}", channel);
                 
-                if let Some(game_id) = channel.strip_prefix("game_channel::") {
-                    if let Ok(queued_message) = serde_json::from_str::<QueuedMessage>(&payload) {
-                        let processors = game_processors_clone.read().await;
-                        if let Some(sender) = processors.get(game_id) {
-                            if let Err(_) = sender.send(queued_message).await {
-                                println!("[GameManager] Failed to send message to game processor for game {}", game_id);
-                            }
-                        } else {
-                            println!("[GameManager] No processor found for game {}", game_id);
+                if let Some(_game_id) = channel.strip_prefix("game_channel::") {
+                    if let Ok(broadcast_chunk) = serde_json::from_str::<BroadcastMessageChunk>(&payload) {
+                        println!("[GameManager] Processing {} broadcast messages for game {}", 
+                            broadcast_chunk.messages.len(), broadcast_chunk.game_id);
+                        
+                        if let Err(e) = game_manager_clone.process_broadcast_messages(broadcast_chunk).await {
+                            println!("[GameManager] Error processing broadcast messages: {}", e);
                         }
                     } else {
-                        println!("[GameManager] Failed to deserialize queued message: {}", payload);
+                        println!("[GameManager] Failed to deserialize broadcast message chunk: {}", payload);
                     }
                 }
             }
             println!("[GameManager] Pub/sub routing task shutting down");
         });
         
-        Self {
-            redis_client,
-            games: RwLock::new(HashMap::new()),
-            game_broadcasters: RwLock::new(HashMap::new()),
-            game_processors,
-            processor_handles: RwLock::new(HashMap::new()),
-            _pubsub_routing_handle: pubsub_routing_handle,
-        }
+        *self.pubsub_routing_handle.write().await = Some(pubsub_routing_handle);
+        Ok(())
     }
 
     fn generate_game_code(&self) -> String {
@@ -495,24 +502,19 @@ impl GameManager {
     ) -> GameResult<()> {
         GameManager::ensure_game_processor_with_manager(game_manager.clone(), game_id).await?;
         
-        let queued_message = QueuedMessage {
-            timestamp: std::time::Instant::now(),
-            message,
-        };
-        
-        let message_json = serde_json::to_string(&queued_message)
-            .map_err(|e| ErrorResponse {
-                error: ErrorCode::InternalServerError,
-                message: format!("Failed to serialize queued message: {}", e),
-            })?;
-        
-        let channel = format!("game_channel::{}", game_id);
-        game_manager.redis_client.publish(&channel, &message_json).await
-            .map_err(|e| ErrorResponse {
-                error: ErrorCode::InternalServerError,
-                message: format!("Failed to publish message to Redis: {}", e),
-            })?;
-        
+        let processors = game_manager.game_processors.read().await;
+        if let Some(sender) = processors.get(game_id) {
+            let queued_message = QueuedMessage {
+                timestamp: std::time::Instant::now(),
+                message,
+            };
+            
+            sender.send(queued_message).await
+                .map_err(|_| ErrorResponse {
+                    error: ErrorCode::InternalServerError,
+                    message: "Game processor channel closed".to_string(),
+                })?;
+        }
         Ok(())
     }
     
@@ -527,5 +529,76 @@ impl GameManager {
         if let Some(handle) = handles.remove(game_id) {
             handle.abort(); // Force stop the task (backup in case it's stuck)
         }
+    }
+
+    pub async fn publish_broadcast_messages(&self, game_id: &str, player_id: &str, messages: Vec<GameMessage>) -> GameResult<()> {
+        if messages.is_empty() {
+            return Ok(());
+        }
+
+        let broadcast_chunk = BroadcastMessageChunk {
+            game_id: game_id.to_string(),
+            player_id: player_id.to_string(),
+            messages,
+        };
+
+        let message_json = serde_json::to_string(&broadcast_chunk)
+            .map_err(|e| ErrorResponse {
+                error: ErrorCode::InternalServerError,
+                message: format!("Failed to serialize broadcast chunk: {}", e),
+            })?;
+
+        let channel = format!("game_channel::{}", game_id);
+        self.redis_client.publish(&channel, &message_json).await
+            .map_err(|e| ErrorResponse {
+                error: ErrorCode::InternalServerError,
+                message: format!("Failed to publish broadcast messages to Redis: {}", e),
+            })?;
+
+        println!("[GameManager] Published {} messages to Redis for game {}", broadcast_chunk.messages.len(), game_id);
+        Ok(())
+    }
+
+    pub async fn process_broadcast_messages(&self, broadcast_chunk: BroadcastMessageChunk) -> GameResult<()> {
+        for game_message in broadcast_chunk.messages {
+            println!("[GameManager] Processing broadcast message: {:?}", game_message);
+            match &game_message {
+                GameMessage::HaltTimer(halt_timer) => {
+                    let broadcast_ws_message = WebSocketMessage {
+                        game_id: broadcast_chunk.game_id.clone(),
+                        message: game_message.clone(),
+                        player_id: broadcast_chunk.player_id.clone(),
+                        auth_token: None,
+                    };
+                    
+                    self.broadcast_to_game(&broadcast_chunk.game_id, broadcast_ws_message).await?;
+                    
+                    let current_time_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64;
+                    
+                    if halt_timer.end_timestamp_ms > current_time_ms {
+                        let sleep_duration_ms = halt_timer.end_timestamp_ms - current_time_ms;
+                        println!("[GameManager] Halting for {} ms until timestamp {}", sleep_duration_ms, halt_timer.end_timestamp_ms);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(sleep_duration_ms)).await;
+                    } else {
+                        println!("[GameManager] Timer already expired, continuing immediately");
+                    }
+                }
+                _ => {
+                    println!("[GameManager] Broadcasting regular message: {:?}", game_message);
+                    let broadcast_ws_message = WebSocketMessage {
+                        game_id: broadcast_chunk.game_id.clone(),
+                        message: game_message.clone(),
+                        player_id: broadcast_chunk.player_id.clone(),
+                        auth_token: None,
+                    };
+                    
+                    self.broadcast_to_game(&broadcast_chunk.game_id, broadcast_ws_message).await?;
+                }
+            }
+        }
+        Ok(())
     }
 }

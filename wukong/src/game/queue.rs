@@ -1,4 +1,4 @@
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Instant};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use crate::game::messages::{WebSocketMessage, GameMessage, GameMode, GameStartedMessage, client_safe_ws_message};
@@ -10,6 +10,13 @@ pub struct QueuedMessage {
     #[serde(skip, default = "Instant::now")]
     pub timestamp: Instant,
     pub message: WebSocketMessage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BroadcastMessageChunk {
+    pub game_id: String,
+    pub player_id: String, // broadcasted messages are in reaction to this player
+    pub messages: Vec<GameMessage>,
 }
 
 pub struct GameProcessor {
@@ -61,7 +68,9 @@ impl GameProcessor {
                         return Ok(());
                     }
                     
-                    game_manager.broadcast_to_game(game_id, client_safe_ws_message(ws_message)).await?;
+                    let player_id = ws_message.player_id.clone();
+                    let messages = vec![client_safe_ws_message(ws_message).message];
+                    game_manager.publish_broadcast_messages(game_id, &player_id, messages).await?;
                 } else {
                     println!("[GameProcessor] Game {} not found for BackToLobby message", game_id);
                 }
@@ -100,7 +109,7 @@ impl GameProcessor {
                 };
                 
                 let broadcast_messages = vec![updated_ws_message.message.clone()];
-                Self::process_broadcast_messages(game_id, &player_id, broadcast_messages, game_manager).await?;
+                game_manager.publish_broadcast_messages(game_id, &player_id, broadcast_messages).await?;
             }
             TeamDraft(team_draft_message) => {
                 println!("[GameProcessor] Processing TeamDraft message: {:?}", team_draft_message);
@@ -121,8 +130,8 @@ impl GameProcessor {
                                 Some(game.team_draft.handle_message(players, team_draft_message.clone()))
                             }).await {
                                 Ok(Some(broadcast_messages)) => {
-                                    println!("[GameProcessor] Processing broadcast messages: {:?}", broadcast_messages);
-                                    Self::process_broadcast_messages(game_id, &required_player_id, broadcast_messages, game_manager).await?;
+                                    println!("[GameProcessor] Publishing broadcast messages: {:?}", broadcast_messages);
+                                    game_manager.publish_broadcast_messages(game_id, &required_player_id, broadcast_messages).await?;
                                 }
                                 Ok(None) => {}
                                 Err(e) => {
@@ -142,59 +151,14 @@ impl GameProcessor {
                 }
             }
             _ => {
+                let player_id = ws_message.player_id.clone();
                 let client_safe_ws_message = client_safe_ws_message(ws_message);
-                game_manager.broadcast_to_game(game_id, client_safe_ws_message).await?;
+                let messages = vec![client_safe_ws_message.message];
+                game_manager.publish_broadcast_messages(game_id, &player_id, messages).await?;
             }
         }
         
         Ok(())
     }
-    
-    async fn process_broadcast_messages(
-        game_id: &str,
-        player_id: &str,
-        broadcast_messages: Vec<GameMessage>,
-        game_manager: &Arc<GameManager>,
-    ) -> GameResult<()> {
-        for game_message in broadcast_messages {
-            println!("[GameProcessor] Processing broadcast message: {:?}", game_message);
-            match &game_message {
-                GameMessage::HaltTimer(halt_timer) => {
-                    let broadcast_ws_message = WebSocketMessage {
-                        game_id: game_id.to_string(),
-                        message: game_message.clone(),
-                        player_id: player_id.to_string(),
-                        auth_token: None,
-                    };
-                    
-                    game_manager.broadcast_to_game(game_id, broadcast_ws_message).await?;
-                    
-                    let current_time_ms = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_millis() as u64;
-                    
-                    if halt_timer.end_timestamp_ms > current_time_ms {
-                        let sleep_duration_ms = halt_timer.end_timestamp_ms - current_time_ms;
-                        println!("[GameProcessor] Halting for {} ms until timestamp {}", sleep_duration_ms, halt_timer.end_timestamp_ms);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(sleep_duration_ms)).await;
-                    } else {
-                        println!("[GameProcessor] Timer already expired, continuing immediately");
-                    }
-                }
-                _ => {
-                    println!("[GameProcessor] Broadcasting regular message: {:?}", game_message);
-                    let broadcast_ws_message = WebSocketMessage {
-                        game_id: game_id.to_string(),
-                        message: game_message.clone(),
-                        player_id: player_id.to_string(),
-                        auth_token: None,
-                    };
-                    
-                    game_manager.broadcast_to_game(game_id, broadcast_ws_message).await?;
-                }
-            }
-        }
-        Ok(())
-    }
+
 } 

@@ -29,4 +29,4 @@ valkey:
 - `valkey-cli`, `MONITOR`
 
 ### Repo Complexity
-Score: `4`
+Score: `5`
