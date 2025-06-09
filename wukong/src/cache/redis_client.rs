@@ -141,7 +141,7 @@ impl RedisClient {
     }
 
     // PUB/SUB METHODS
-
+    // game_channel::{game_id}
     pub async fn publish(&self, channel: impl RedisKey, message: impl RedisValue) -> RedisResult<usize> {
         let mut conn = self.connection.clone(); // Cheap clone - same TCP connection
         conn.publish(channel, message).await

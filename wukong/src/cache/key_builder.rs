@@ -19,6 +19,14 @@ pub struct KeySchemas {
 impl KeySchemas {
     pub fn new() -> Self {
         let mut schemas = HashMap::new();
+
+        schemas.insert("game_channel", KeySchema {
+            base_pattern: vec![
+                KeySegment::Fixed(vec!["game_channel"]),
+                KeySegment::Field("game_id"),
+            ],
+            allowed_extensions: vec![],
+        });
         
         schemas.insert("game_code", KeySchema {
             base_pattern: vec![

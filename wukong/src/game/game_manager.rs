@@ -16,6 +16,7 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 use crate::cache::redis_client::RedisClient;
 use crate::cache::key_builder::key;
+use futures::StreamExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
 #[ts(export)]
@@ -52,8 +53,11 @@ pub struct GameManager {
     game_broadcasters: RwLock<HashMap<String, broadcast::Sender<String>>>,
     
     // for message processing - just stores the senders
-    game_processors: RwLock<HashMap<String, mpsc::Sender<QueuedMessage>>>, // game_id -> sender
+    game_processors: Arc<RwLock<HashMap<String, mpsc::Sender<QueuedMessage>>>>, // game_id -> sender
     processor_handles: RwLock<HashMap<String, JoinHandle<()>>>, // game_id -> processing task handle
+    
+    // Shared pub/sub routing task handle
+    _pubsub_routing_handle: JoinHandle<()>,
 }
 
 impl GameManager {
@@ -62,12 +66,50 @@ impl GameManager {
             .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
             
         let redis_client = RedisClient::new(redis_url).await.unwrap();
+        
+        // psubscribe to all game channels
+        let mut pubsub = redis_client.create_shared_pubsub(vec!["game_channel::*".to_string()]).await.unwrap();
+        
+        let game_processors: Arc<RwLock<HashMap<String, mpsc::Sender<QueuedMessage>>>> = 
+            Arc::new(RwLock::new(HashMap::new()));
+        let game_processors_clone = game_processors.clone();
+        
+        // BACKGROUND TASK - route messages from the pubsub to the game processors
+        let pubsub_routing_handle = tokio::spawn(async move {
+            while let Some(msg) = pubsub.on_message().next().await {
+                let channel = msg.get_channel_name();
+                let payload: String = match msg.get_payload() {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+
+                println!("[GameManager] Received message on channel: {}", channel);
+                
+                if let Some(game_id) = channel.strip_prefix("game_channel::") {
+                    if let Ok(queued_message) = serde_json::from_str::<QueuedMessage>(&payload) {
+                        let processors = game_processors_clone.read().await;
+                        if let Some(sender) = processors.get(game_id) {
+                            if let Err(_) = sender.send(queued_message).await {
+                                println!("[GameManager] Failed to send message to game processor for game {}", game_id);
+                            }
+                        } else {
+                            println!("[GameManager] No processor found for game {}", game_id);
+                        }
+                    } else {
+                        println!("[GameManager] Failed to deserialize queued message: {}", payload);
+                    }
+                }
+            }
+            println!("[GameManager] Pub/sub routing task shutting down");
+        });
+        
         Self {
             redis_client,
             games: RwLock::new(HashMap::new()),
             game_broadcasters: RwLock::new(HashMap::new()),
-            game_processors: RwLock::new(HashMap::new()),
+            game_processors,
             processor_handles: RwLock::new(HashMap::new()),
+            _pubsub_routing_handle: pubsub_routing_handle,
         }
     }
 
@@ -453,19 +495,24 @@ impl GameManager {
     ) -> GameResult<()> {
         GameManager::ensure_game_processor_with_manager(game_manager.clone(), game_id).await?;
         
-        let processors = game_manager.game_processors.read().await;
-        if let Some(sender) = processors.get(game_id) {
-            let queued_message = QueuedMessage {
-                timestamp: std::time::Instant::now(),
-                message,
-            };
-            
-            sender.send(queued_message).await
-                .map_err(|_| ErrorResponse {
-                    error: ErrorCode::InternalServerError,
-                    message: "Game processor channel closed".to_string(),
-                })?;
-        }
+        let queued_message = QueuedMessage {
+            timestamp: std::time::Instant::now(),
+            message,
+        };
+        
+        let message_json = serde_json::to_string(&queued_message)
+            .map_err(|e| ErrorResponse {
+                error: ErrorCode::InternalServerError,
+                message: format!("Failed to serialize queued message: {}", e),
+            })?;
+        
+        let channel = format!("game_channel::{}", game_id);
+        game_manager.redis_client.publish(&channel, &message_json).await
+            .map_err(|e| ErrorResponse {
+                error: ErrorCode::InternalServerError,
+                message: format!("Failed to publish message to Redis: {}", e),
+            })?;
+        
         Ok(())
     }
     

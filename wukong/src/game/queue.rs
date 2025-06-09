@@ -3,10 +3,11 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use crate::game::messages::{WebSocketMessage, GameMessage, GameMode, GameStartedMessage, client_safe_ws_message};
 use crate::game::game_manager::{GameManager, GameResult};
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueuedMessage {
-    #[allow(dead_code)] // Not used yet, but will be useful for metrics/debugging
+    #[serde(skip, default = "Instant::now")]
     pub timestamp: Instant,
     pub message: WebSocketMessage,
 }
