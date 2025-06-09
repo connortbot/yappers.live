@@ -20,6 +20,14 @@ impl KeySchemas {
     pub fn new() -> Self {
         let mut schemas = HashMap::new();
 
+        for (name, schema) in crate::game::types::get_key_schemas() {
+            schemas.insert(name, schema);
+        }
+
+        for (name, schema) in crate::team_draft::types::get_key_schemas() {
+            schemas.insert(name, schema);
+        }
+
         schemas.insert("game_channel", KeySchema {
             base_pattern: vec![
                 KeySegment::Fixed(vec!["game_channel"]),
@@ -47,27 +55,6 @@ impl KeySchemas {
         schemas.insert("player_auth", KeySchema {
             base_pattern: vec![
                 KeySegment::Fixed(vec!["player_auth"]),
-                KeySegment::Field("player_id"),
-            ],
-            allowed_extensions: vec![],
-        });
-
-        schemas.insert("game", KeySchema {
-            base_pattern: vec![
-                KeySegment::Fixed(vec!["game"]),
-                KeySegment::Field("game_id"),
-            ],
-            allowed_extensions: vec![
-                // game::id::host
-                vec![KeySegment::Fixed(vec!["host"])],
-                // game::id::code  
-                vec![KeySegment::Fixed(vec!["code"])],
-            ],
-        });
-
-        schemas.insert("player_usernames", KeySchema {
-            base_pattern: vec![
-                KeySegment::Fixed(vec!["player_usernames"]),
                 KeySegment::Field("player_id"),
             ],
             allowed_extensions: vec![],

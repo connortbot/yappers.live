@@ -2,43 +2,20 @@ use std::collections::HashMap;
 use tokio::sync::{RwLock, broadcast, mpsc};
 use uuid::Uuid;
 use chrono;
-use serde::Serialize;
 use rand::{Rng, rng};
 use crate::game::messages::{GameMessage, WebSocketMessage};
+use crate::game::types::{Player, Game};
 use crate::game::queue::{GameProcessor, QueuedMessage, BroadcastMessageChunk};
 use crate::error::{ErrorResponse, ErrorCode, REDIS_ERROR};
 use serde_json;
-use utoipa::ToSchema;
-use serde::Deserialize;
-use ts_rs::TS;
-use crate::team_draft::state::TeamDraftManager;
+use crate::team_draft::types::TeamDraftManager;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use crate::cache::redis_client::RedisClient;
 use crate::cache::key_builder::key;
 use futures::StreamExt;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
-#[ts(export)]
-pub struct Player {
-    pub id: String,
-    pub username: String,
-    // stream?
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
-#[ts(export)]
-pub struct Game {
-    pub id: String,
-    pub code: String,
-    pub host_id: String,
-    pub players: Vec<Player>,
-    pub max_players: u8,
-    pub created_at: i32,
-    
-    // Game mode managers
-    pub team_draft: TeamDraftManager,
-}
+pub const MAX_PLAYERS: u8 = 8;
 
 pub struct GameEntry {
     pub game: Game,
@@ -170,21 +147,20 @@ impl GameManager {
             }
         };
 
-        let host = Player {
+        let host_player = Player {
             id: host_id.clone(),
             username: host_username.clone(),
         };
 
-        // let usernames_key = key("player_usernames")?.field(&host_id)?.get_key()?;
-        // self.redis_client.set(&usernames_key, &host_username).await
-        //     .map_err(|e| REDIS_ERROR(&e.to_string()))?;
-
+        // INIT GAME CACHE SETS FULL MANAGER STATE, AND...
+        // ALL GAME MODE STATESS
+        // self.init_game_cached(&game_id, &game_code, &host_player).await?;
 
         let game = Game {
             id: game_id.clone(),
             code: game_code.clone(),
             host_id: host_id.clone(),
-            players: vec![host],
+            players: vec![host_player],
             max_players: 8,
             created_at: chrono::Utc::now().timestamp() as i32,
             team_draft: TeamDraftManager::new(
@@ -600,5 +576,96 @@ impl GameManager {
             }
         }
         Ok(())
+    }
+
+    // HELPERS FOR CACHE STATE
+
+    async fn init_game_cached(&self, game_id: &str, game_code: &str, host_player: &Player) -> GameResult<()> {
+        let username_key = key("player_usernames")?.field(host_player.id.clone())?.get_key()?;
+        self.redis_client.set(&username_key, &host_player.username).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
+
+        // Create game in cache: code, host, players hashmap, max players, created at, team draft state
+        let code_key = key("game")?.field(game_id)?.field("code")?.get_key()?;
+        self.redis_client.set(&code_key, game_code).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
+        
+        let host_key = key("game")?.field(game_id)?.field("host_id")?.get_key()?;
+        self.redis_client.set(&host_key, host_player.id.clone()).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
+
+        self.add_player_cached(game_id, host_player).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
+
+        let max_players_key = key("game")?.field(game_id)?.field("max_players")?.get_key()?;
+        self.redis_client.set(&max_players_key, &MAX_PLAYERS).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
+
+        let created_at_key = key("game")?.field(game_id)?.field("created_at")?.get_key()?;
+        self.redis_client.set(&created_at_key, chrono::Utc::now().timestamp() as i32).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn get_players_cached(&self, game_id: &str) -> GameResult<Vec<Player>> {
+        let players_key = key("game")?.field(game_id)?.field("players")?.get_key()?;
+        
+        match self.redis_client.hgetall(&players_key).await {
+            Ok(player_map) => {
+                let mut players = Vec::new();
+                for (player_id, player_json) in player_map {
+                    match serde_json::from_str::<Player>(&player_json) {
+                        Ok(player) => players.push(player),
+                        Err(e) => {
+                            println!("Failed to deserialize player {}: {}", player_id, e);
+                        }
+                    }
+                }
+                Ok(players)
+            }
+            Err(e) => Err(REDIS_ERROR(&e.to_string())),
+        }
+    }
+
+    async fn add_player_cached(&self, game_id: &str, player: &Player) -> GameResult<()> {
+        let players_key = key("game")?.field(game_id)?.field("players")?.get_key()?;
+        let player_json = serde_json::to_string(player)
+            .map_err(|e| ErrorResponse {
+                error: ErrorCode::InternalServerError,
+                message: format!("Failed to serialize player: {}", e),
+            })?;
+        
+        self.redis_client.hset(&players_key, &player.id, &player_json).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
+        
+        Ok(())
+    }
+
+    async fn remove_player_cached(&self, game_id: &str, player_id: &str) -> GameResult<()> {
+        let players_key = key("game")?.field(game_id)?.field("players")?.get_key()?;
+        
+        self.redis_client.hdel(&players_key, player_id).await
+            .map_err(|e| REDIS_ERROR(&e.to_string()))?;
+        
+        Ok(())
+    }
+
+    async fn get_player_cached(&self, game_id: &str, player_id: &str) -> GameResult<Option<Player>> {
+        let players_key = key("game")?.field(game_id)?.field("players")?.get_key()?;
+        
+        match self.redis_client.hget(&players_key, player_id).await {
+            Ok(Some(player_json)) => {
+                match serde_json::from_str::<Player>(&player_json) {
+                    Ok(player) => Ok(Some(player)),
+                    Err(e) => Err(ErrorResponse {
+                        error: ErrorCode::InternalServerError,
+                        message: format!("Failed to deserialize player: {}", e),
+                    }),
+                }
+            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(REDIS_ERROR(&e.to_string())),
+        }
     }
 }

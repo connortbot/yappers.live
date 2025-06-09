@@ -1,54 +1,13 @@
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
-use utoipa::ToSchema;
-use ts_rs::TS;
 use crate::game::messages::{GameMessage, TimerReason};
 use crate::team_draft::messages::{TeamDraftMessage, TeamDraftTimerReason};
-use crate::game::game_manager::Player;
+use crate::game::types::Player;
+use crate::team_draft::types::{TeamDraftPhase, Round, TeamDraftManager};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SERVER_ONLY_AUTHORIZED: &str = "00000000-0000-0000-0000-000000000000";
 pub const DEFAULT_TEAM_SIZE: u8 = 2;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
-#[ts(export)]
-pub enum TeamDraftPhase {
-    YapperChoosing,
-    Drafting,
-    Awarding,
-    Complete,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
-#[ts(export)]
-pub struct Round {
-    pub round: u8,
-    pub pool: String,
-    pub competition: String,
-    pub team_size: u8,
-
-    pub starting_drafter_id: String,
-    pub current_drafter_id: String,
-
-    pub player_to_picks: HashMap<String, Vec<String>>,
-}
-
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
-#[ts(export)]
-pub struct TeamDraftManager {
-    // Yapper
-    pub yapper_id: String,
-    pub yapper_index: u8,
-    pub max_rounds: u8, // usually, set to number of players
-    
-    // Phase
-    pub phase: TeamDraftPhase,
-    pub round_data: Round,
-
-    // Turn
-    pub player_points: HashMap<String, u8>,
-}
 
 impl TeamDraftManager {
     pub fn new(
@@ -288,26 +247,3 @@ impl TeamDraftManager {
         }
     }
 }
-
-// Game starts
-// set the yapper_id and yapper_index
-
-// phase = YapperChoosing
-// yapper sets the pool and competition, team_size set to 3 by default
-// yapper chooses first player
-
-// phase = Drafting
-// player submits pick
-// check if all player_to_picks have <team_size> picks, set phase to Awarding
-// otherwise, set next player
-
-// phase = Awarding
-// yapper awards a point to a player
-// set phase to Complete
-
-// phase = Complete
-// check if max_rounds is reached, if not then set phase to YapperChoosing
-
-
-
-

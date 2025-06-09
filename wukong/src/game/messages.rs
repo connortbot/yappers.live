@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use crate::team_draft::messages::{TeamDraftMessage, TeamDraftTimerReason};
-use crate::team_draft::state::TeamDraftManager;
+use crate::team_draft::types::TeamDraftManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]

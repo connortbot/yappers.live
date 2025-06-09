@@ -1,4 +1,5 @@
 use super::redis_client::RedisClient;
+use super::key_builder::key;
 
 async fn setup_client() -> RedisClient {
     RedisClient::new("redis://127.0.0.1:6379".to_string())
@@ -81,4 +82,47 @@ async fn test_concurrent_access() {
         client.del("key2"),
         client.del("counter")
     );
+}
+
+// the schema is super deep so may as well test it here
+#[test]
+fn test_team_draft_key_schema() {
+    let key1 = key("team_draft").unwrap()
+        .field("game123").unwrap()
+        .field("yapper_id").unwrap()
+        .get_key().unwrap();
+    assert_eq!(key1, "team_draft::game123::yapper_id");
+
+    let key2 = key("team_draft").unwrap()
+        .field("game123").unwrap()
+        .field("phase").unwrap()
+        .get_key().unwrap();
+    assert_eq!(key2, "team_draft::game123::phase");
+
+    let key3 = key("team_draft").unwrap()
+        .field("game123").unwrap()
+        .field("round").unwrap()
+        .field("pool").unwrap()
+        .get_key().unwrap();
+    assert_eq!(key3, "team_draft::game123::round::pool");
+
+    let key4 = key("team_draft").unwrap()
+        .field("game123").unwrap()
+        .field("round").unwrap()
+        .field("competition").unwrap()
+        .get_key().unwrap();
+    assert_eq!(key4, "team_draft::game123::round::competition");
+
+    let key5 = key("team_draft").unwrap()
+        .field("game123").unwrap()
+        .field("round").unwrap()
+        .field("starting_drafter_id").unwrap()
+        .get_key().unwrap();
+    assert_eq!(key5, "team_draft::game123::round::starting_drafter_id");
+
+    let invalid_key = key("team_draft").unwrap()
+        .field("game123").unwrap()
+        .field("round").unwrap()
+        .field("invalid_field");
+    assert!(invalid_key.is_err());
 } 

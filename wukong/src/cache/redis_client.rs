@@ -54,6 +54,36 @@ impl RedisClient {
         conn.del(key).await
     }
 
+    // custom method, pattern delete
+    pub async fn pdel(&self, pattern: &str) -> RedisResult<usize> {
+        let mut conn = self.connection.clone();
+        let mut cursor = "0".to_string();
+        let mut total_deleted = 0;
+        
+        loop {
+            let (new_cursor, keys): (String, Vec<String>) = redis::cmd("SCAN")
+                .arg(&cursor)
+                .arg("MATCH")
+                .arg(pattern)
+                .arg("COUNT")
+                .arg("1000")
+                .query_async(&mut conn)
+                .await?;
+            
+            if !keys.is_empty() {
+                let deleted: usize = conn.del(keys).await?;
+                total_deleted += deleted;
+            }
+            
+            cursor = new_cursor;
+            if cursor == "0" {
+                break; // Scan complete
+            }
+        }
+        
+        Ok(total_deleted)
+    }
+
     pub async fn exists(&self, key: impl RedisKey) -> RedisResult<bool> {
         let mut conn = self.connection.clone();
         conn.exists(key).await
@@ -92,6 +122,11 @@ impl RedisClient {
     pub async fn hget(&self, key: impl RedisKey, field: impl RedisField) -> RedisResult<Option<String>> {
         let mut conn = self.connection.clone();
         conn.hget(key, field).await
+    }
+
+    pub async fn hdel(&self, key: impl RedisKey, field: impl RedisField) -> RedisResult<usize> {
+        let mut conn = self.connection.clone();
+        conn.hdel(key, field).await
     }
 
     pub async fn hgetall(&self, key: impl RedisKey) -> RedisResult<HashMap<String, String>> {

@@ -7,7 +7,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use std::sync::Arc;
-use crate::game::game_manager::{GameManager, Game};
+use crate::game::game_manager::{GameManager};
+use crate::game::types::Game;
 
 use crate::error::ErrorResponse;
 
