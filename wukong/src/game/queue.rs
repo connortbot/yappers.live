@@ -82,26 +82,39 @@ impl GameProcessor {
                 let player_id = ws_message.player_id.clone();
                 let updated_ws_message = match &game_started_msg.game_type {
                     GameMode::TeamDraft => {
-                        match game_manager.modify_game(game_id, |game| {
-                            let num_players = game.players.len() as u8;
-                            game.team_draft.set_game_settings(num_players);
-                            println!("[GameProcessor] Started TeamDraft game with {} players", num_players);
-                            game.team_draft.clone()
-                        }).await {
-                            Ok(updated_team_draft_state) => {
-                                let ws_msg = WebSocketMessage {
+                        match game_manager.get_game(game_id).await {
+                            Ok(Some(game)) => {
+                                let num_players = game.players.len() as u8;
+                                
+                                if let Err(e) = game_manager.get_team_draft_service()
+                                    .set_game_settings(game_id.to_string(), num_players).await {
+                                    println!("[GameProcessor] Error setting team draft game settings: {}", e);
+                                }
+                                
+                                println!("[GameProcessor] Started TeamDraft game with {} players", num_players);
+                                
+                                let initial_state = crate::team_draft::types::TeamDraftState::new(
+                                    game.host_id.clone(),
+                                    0, // host starts as yapper at index 0
+                                    num_players,
+                                );
+                                
+                                WebSocketMessage {
                                     game_id: ws_message.game_id.clone(),
                                     message: GameStarted(GameStartedMessage {
                                         game_type: GameMode::TeamDraft,
-                                        initial_team_draft_state: Some(updated_team_draft_state),
+                                        initial_team_draft_state: Some(initial_state),
                                     }),
                                     player_id: player_id.clone(),
                                     auth_token: None,
-                                };
-                                ws_msg
+                                }
+                            }
+                            Ok(None) => {
+                                println!("[GameProcessor] Game {} not found for GameStarted", game_id);
+                                client_safe_ws_message(ws_message)
                             }
                             Err(e) => {
-                                println!("[GameProcessor] Error modifying game for GameStarted: {}", e);
+                                println!("[GameProcessor] Error getting game for GameStarted: {}", e);
                                 client_safe_ws_message(ws_message)
                             }
                         }
@@ -114,28 +127,39 @@ impl GameProcessor {
             TeamDraft(team_draft_message) => {
                 println!("[GameProcessor] Processing TeamDraft message: {:?}", team_draft_message);
                 if let Some(auth_token) = &ws_message.auth_token {
-                    let required_player_id = if let Ok(Some(game)) = game_manager.get_game(game_id).await {
-                        let required_id = game.team_draft.get_correct_player_source_id(team_draft_message.clone());
-                        required_id
-                    } else {
-                        println!("[GameProcessor] Game {} not found for team draft message", game_id);
-                        return Ok(());
+                    let required_player_id = match game_manager.get_team_draft_service()
+                        .get_correct_player_source_id(game_id.to_string(), team_draft_message.clone()).await {
+                        Ok(player_id) => player_id,
+                        Err(e) => {
+                            println!("[GameProcessor] Error getting required player ID for team draft message: {}", e);
+                            return Ok(());
+                        }
                     };
                     
                     match game_manager.is_authorized(&required_player_id, auth_token).await {
                         Ok(true) => {
-                            match game_manager.modify_game(game_id, |game| {
-                                let players = game.players.clone();
-                                println!("[GameProcessor] Handling team draft message: {:?}", team_draft_message);
-                                Some(game.team_draft.handle_message(players, team_draft_message.clone()))
-                            }).await {
-                                Ok(Some(broadcast_messages)) => {
-                                    println!("[GameProcessor] Publishing broadcast messages: {:?}", broadcast_messages);
-                                    game_manager.publish_broadcast_messages(game_id, &required_player_id, broadcast_messages).await?;
+                            let players = match game_manager.get_game(game_id).await {
+                                Ok(Some(game)) => game.players,
+                                Ok(None) => {
+                                    println!("[GameProcessor] Game {} not found for team draft message", game_id);
+                                    return Ok(());
                                 }
-                                Ok(None) => {}
                                 Err(e) => {
-                                    println!("[GameProcessor] Error modifying game for team draft: {}", e);
+                                    println!("[GameProcessor] Error getting game for team draft: {}", e);
+                                    return Ok(());
+                                }
+                            };
+                            
+                            match game_manager.get_team_draft_service()
+                                .handle_message(game_id.to_string(), players, team_draft_message.clone()).await {
+                                Ok(broadcast_messages) => {
+                                    if !broadcast_messages.is_empty() {
+                                        println!("[GameProcessor] Publishing {} broadcast messages", broadcast_messages.len());
+                                        game_manager.publish_broadcast_messages(game_id, &required_player_id, broadcast_messages).await?;
+                                    }
+                                }
+                                Err(e) => {
+                                    println!("[GameProcessor] Error handling team draft message: {}", e);
                                 }
                             }
                         }
@@ -160,5 +184,4 @@ impl GameProcessor {
         
         Ok(())
     }
-
 } 

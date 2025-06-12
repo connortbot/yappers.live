@@ -82,6 +82,7 @@ pub struct KeyBuilder {
     in_extensions: bool,
     current_extension_path: Option<usize>,
     extension_segment: usize,
+    potential_extension_paths: Vec<usize>,
 }
 
 impl KeyBuilder {
@@ -97,6 +98,7 @@ impl KeyBuilder {
             in_extensions: false,
             current_extension_path: None,
             extension_segment: 0,
+            potential_extension_paths: Vec::new(),
         })
     }
     
@@ -129,42 +131,97 @@ impl KeyBuilder {
                         Ok(self)
                     }
                 }
-            } else {
-                for (path_index, extension_path) in self.schema.allowed_extensions.iter().enumerate() {
-                    if let Some(first_segment) = extension_path.first() {
-                        match first_segment {
+            } else if !self.potential_extension_paths.is_empty() {
+                let mut still_matching_paths = Vec::new();
+                
+                for &path_index in &self.potential_extension_paths {
+                    let extension_path = &self.schema.allowed_extensions[path_index];
+                    if let Some(segment) = extension_path.get(self.extension_segment) {
+                        match segment {
                             KeySegment::Fixed(allowed_values) => {
                                 if allowed_values.contains(&value_str.as_str()) {
-                                    self.current_extension_path = Some(path_index);
-                                    self.values.push(value_str);
-                                    self.extension_segment = 1;
-                                    return Ok(self);
+                                    still_matching_paths.push(path_index);
                                 }
                             }
                             KeySegment::Field(_) => {
-                                self.current_extension_path = Some(path_index);
-                                self.values.push(value_str);
-                                self.extension_segment = 1;
-                                return Ok(self);
+                                still_matching_paths.push(path_index);
                             }
                         }
                     }
                 }
                 
-                let available_options: Vec<String> = self.schema.allowed_extensions
-                    .iter()
-                    .filter_map(|path| {
-                        path.first().and_then(|segment| match segment {
-                            KeySegment::Fixed(values) => Some(format!("{:?}", values)),
-                            KeySegment::Field(name) => Some(format!("Field({})", name)),
+                if still_matching_paths.is_empty() {
+                    let available_options: Vec<String> = self.potential_extension_paths
+                        .iter()
+                        .filter_map(|&path_index| {
+                            let extension_path = &self.schema.allowed_extensions[path_index];
+                            extension_path.get(self.extension_segment).and_then(|segment| match segment {
+                                KeySegment::Fixed(values) => Some(format!("{:?}", values)),
+                                KeySegment::Field(name) => Some(format!("Field({})", name)),
+                            })
                         })
-                    })
-                    .collect();
+                        .collect();
+                    
+                    return Err(format!(
+                        "No potential extension path matches '{}' at position {}. Available options: {}", 
+                        value_str, self.extension_segment, available_options.join(", ")
+                    ));
+                } else if still_matching_paths.len() == 1 {
+                    self.current_extension_path = Some(still_matching_paths[0]);
+                    self.potential_extension_paths.clear();
+                    self.values.push(value_str);
+                    self.extension_segment += 1;
+                    Ok(self)
+                } else {
+                    self.potential_extension_paths = still_matching_paths;
+                    self.values.push(value_str);
+                    self.extension_segment += 1;
+                    Ok(self)
+                }
+            } else {
+                let mut matching_paths = Vec::new();
                 
-                return Err(format!(
-                    "No extension path matches '{}'. Available options: {}", 
-                    value_str, available_options.join(", ")
-                ));
+                for (path_index, extension_path) in self.schema.allowed_extensions.iter().enumerate() {
+                    if let Some(segment) = extension_path.get(self.extension_segment) {
+                        match segment {
+                            KeySegment::Fixed(allowed_values) => {
+                                if allowed_values.contains(&value_str.as_str()) {
+                                    matching_paths.push(path_index);
+                                }
+                            }
+                            KeySegment::Field(_) => {
+                                matching_paths.push(path_index);
+                            }
+                        }
+                    }
+                }
+                
+                if matching_paths.is_empty() {
+                    let available_options: Vec<String> = self.schema.allowed_extensions
+                        .iter()
+                        .filter_map(|path| {
+                            path.get(self.extension_segment).and_then(|segment| match segment {
+                                KeySegment::Fixed(values) => Some(format!("{:?}", values)),
+                                KeySegment::Field(name) => Some(format!("Field({})", name)),
+                            })
+                        })
+                        .collect();
+                    
+                    return Err(format!(
+                        "No extension path matches '{}' at position {}. Available options: {}", 
+                        value_str, self.extension_segment, available_options.join(", ")
+                    ));
+                } else if matching_paths.len() == 1 {
+                    self.current_extension_path = Some(matching_paths[0]);
+                    self.values.push(value_str);
+                    self.extension_segment += 1;
+                    Ok(self)
+                } else {
+                    self.potential_extension_paths = matching_paths;
+                    self.values.push(value_str);
+                    self.extension_segment += 1;
+                    Ok(self)
+                }
             }
         }
         else {

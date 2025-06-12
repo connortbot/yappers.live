@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react'
-import type { TeamDraftManager } from '../lib/bindings/TeamDraftManager'
+import type { TeamDraftState } from '../lib/bindings/TeamDraftState'
 import type { GameMessage } from '../lib/bindings/GameMessage'
 import { TeamDraftMessage } from '../lib/bindings/TeamDraftMessage'
 
 export function useTeamDraft() {
-  const [teamDraftState, setTeamDraftState] = useState<TeamDraftManager | null>(null)
+  const [teamDraftState, setTeamDraftState] = useState<TeamDraftState | null>(null)
 
-  const updateTeamDraftState = useCallback((newState: TeamDraftManager) => {
+  const updateTeamDraftState = useCallback((newState: TeamDraftState) => {
     setTeamDraftState(newState)
   }, [])
 

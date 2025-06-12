@@ -11,12 +11,6 @@ impl<T: ToRedisArgs + Send + Sync> RedisKey for T {}
 impl<T: ToRedisArgs + Send + Sync> RedisValue for T {}
 impl<T: ToRedisArgs + Send + Sync> RedisField for T {}
 
-#[derive(Debug, Clone)]
-pub struct PubSubMessage {
-    pub channel: String,
-    pub payload: String,
-}
-
 #[derive(Clone)]
 pub struct RedisClient {
     connection: MultiplexedConnection,
@@ -84,6 +78,32 @@ impl RedisClient {
         Ok(total_deleted)
     }
 
+    pub async fn scan_keys(&self, pattern: &str) -> RedisResult<Vec<String>> {
+        let mut conn = self.connection.clone();
+        let mut cursor = "0".to_string();
+        let mut all_keys = Vec::new();
+        
+        loop {
+            let (new_cursor, keys): (String, Vec<String>) = redis::cmd("SCAN")
+                .arg(&cursor)
+                .arg("MATCH")
+                .arg(pattern)
+                .arg("COUNT")
+                .arg("1000")
+                .query_async(&mut conn)
+                .await?;
+            
+            all_keys.extend(keys);
+            
+            cursor = new_cursor;
+            if cursor == "0" {
+                break;
+            }
+        }
+        
+        Ok(all_keys)
+    }
+
     pub async fn exists(&self, key: impl RedisKey) -> RedisResult<bool> {
         let mut conn = self.connection.clone();
         conn.exists(key).await
@@ -92,6 +112,11 @@ impl RedisClient {
     pub async fn lpush(&self, key: impl RedisKey, value: impl RedisValue) -> RedisResult<usize> {
         let mut conn = self.connection.clone();
         conn.lpush(key, value).await
+    }
+
+    pub async fn rpush(&self, key: impl RedisKey, value: impl RedisValue) -> RedisResult<usize> {
+        let mut conn = self.connection.clone();
+        conn.rpush(key, value).await
     }
 
     pub async fn lrange(&self, key: impl RedisKey, start: isize, stop: isize) -> RedisResult<Vec<String>> {

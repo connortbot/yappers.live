@@ -120,9 +120,40 @@ fn test_team_draft_key_schema() {
         .get_key().unwrap();
     assert_eq!(key5, "team_draft::game123::round::starting_drafter_id");
 
+    // This should disambiguate from the other "round" paths
+    let key6 = key("team_draft").unwrap()
+        .field("game123").unwrap()
+        .field("round").unwrap()
+        .field("player_to_picks").unwrap()
+        .field("player456").unwrap()
+        .get_key().unwrap();
+    assert_eq!(key6, "team_draft::game123::round::player_to_picks::player456");
+
+    let round_fields = vec![
+        "round", "pool", "competition", "team_size", 
+        "starting_drafter_id", "current_drafter_id"
+    ];
+    
+    for field in round_fields {
+        let key = key("team_draft").unwrap()
+            .field("game123").unwrap()
+            .field("round").unwrap()
+            .field(field).unwrap()
+            .get_key().unwrap();
+        assert_eq!(key, format!("team_draft::game123::round::{}", field));
+    }
+
+    // Test invalid field should still fail
     let invalid_key = key("team_draft").unwrap()
         .field("game123").unwrap()
         .field("round").unwrap()
         .field("invalid_field");
     assert!(invalid_key.is_err());
+
+    let incomplete_key = key("team_draft").unwrap()
+        .field("game123").unwrap()
+        .field("round").unwrap()
+        .field("player_to_picks").unwrap()
+        .get_key();
+    assert!(incomplete_key.is_err(), "Should require player_id after player_to_picks");
 } 

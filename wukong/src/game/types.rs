@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use ts_rs::TS;
 
-use crate::team_draft::types::TeamDraftManager;
 use crate::cache::key_builder::{KeySchema, KeySegment};
 
 // types defined for frontend
@@ -24,9 +23,6 @@ pub struct Game {
     pub players: Vec<Player>,
     pub max_players: u8,
     pub created_at: i32,
-    
-    // Game mode managers
-    pub team_draft: TeamDraftManager,
 }
 
 pub fn get_key_schemas() -> Vec<(&'static str, KeySchema)> {

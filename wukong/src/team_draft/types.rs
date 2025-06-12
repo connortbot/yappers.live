@@ -32,7 +32,7 @@ pub struct Round {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
 #[ts(export)]
-pub struct TeamDraftManager {
+pub struct TeamDraftState {
     // Yapper
     pub yapper_id: String,
     pub yapper_index: u8,
@@ -72,9 +72,14 @@ pub fn get_key_schemas() -> Vec<(&'static str, KeySchema)> {
                         "team_size",
                         "starting_drafter_id",
                         "current_drafter_id",
-                        "player_to_picks", // hash map
                     ]),
                 ],
+
+                vec![
+                    KeySegment::Fixed(vec!["round"]),
+                    KeySegment::Fixed(vec!["player_to_picks"]),
+                    KeySegment::Field("player_id"), // vectors
+                ]
             ],
         }),
     ]
