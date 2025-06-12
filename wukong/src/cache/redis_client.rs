@@ -1,9 +1,7 @@
 use redis::{Client, AsyncCommands, RedisResult, ToRedisArgs};
-use redis::aio::MultiplexedConnection;
+use redis::aio::{MultiplexedConnection, PubSub};
 use crate::error::{ErrorResponse, ErrorCode};
 use std::collections::{HashMap, HashSet};
-
-pub type CacheResult<T> = Result<T, ErrorResponse>;
 
 pub trait RedisKey: ToRedisArgs + Send + Sync {}
 pub trait RedisValue: ToRedisArgs + Send + Sync {}
@@ -16,6 +14,7 @@ impl<T: ToRedisArgs + Send + Sync> RedisField for T {}
 #[derive(Clone)]
 pub struct RedisClient {
     connection: MultiplexedConnection,
+    client: Client,
 }
 
 impl RedisClient {
@@ -23,7 +22,10 @@ impl RedisClient {
         let client = Client::open(redis_url)?;
         let connection = client.get_multiplexed_tokio_connection().await?;
         
-        Ok(RedisClient { connection })
+        Ok(RedisClient { 
+            connection,
+            client,
+        })
     }
 
     pub async fn ping(&self) -> RedisResult<String> {
@@ -46,6 +48,62 @@ impl RedisClient {
         conn.del(key).await
     }
 
+    // custom method, pattern delete
+    pub async fn pdel(&self, pattern: &str) -> RedisResult<usize> {
+        let mut conn = self.connection.clone();
+        let mut cursor = "0".to_string();
+        let mut total_deleted = 0;
+        
+        loop {
+            let (new_cursor, keys): (String, Vec<String>) = redis::cmd("SCAN")
+                .arg(&cursor)
+                .arg("MATCH")
+                .arg(pattern)
+                .arg("COUNT")
+                .arg("1000")
+                .query_async(&mut conn)
+                .await?;
+            
+            if !keys.is_empty() {
+                let deleted: usize = conn.del(keys).await?;
+                total_deleted += deleted;
+            }
+            
+            cursor = new_cursor;
+            if cursor == "0" {
+                break; // Scan complete
+            }
+        }
+        
+        Ok(total_deleted)
+    }
+
+    pub async fn scan_keys(&self, pattern: &str) -> RedisResult<Vec<String>> {
+        let mut conn = self.connection.clone();
+        let mut cursor = "0".to_string();
+        let mut all_keys = Vec::new();
+        
+        loop {
+            let (new_cursor, keys): (String, Vec<String>) = redis::cmd("SCAN")
+                .arg(&cursor)
+                .arg("MATCH")
+                .arg(pattern)
+                .arg("COUNT")
+                .arg("1000")
+                .query_async(&mut conn)
+                .await?;
+            
+            all_keys.extend(keys);
+            
+            cursor = new_cursor;
+            if cursor == "0" {
+                break;
+            }
+        }
+        
+        Ok(all_keys)
+    }
+
     pub async fn exists(&self, key: impl RedisKey) -> RedisResult<bool> {
         let mut conn = self.connection.clone();
         conn.exists(key).await
@@ -54,6 +112,11 @@ impl RedisClient {
     pub async fn lpush(&self, key: impl RedisKey, value: impl RedisValue) -> RedisResult<usize> {
         let mut conn = self.connection.clone();
         conn.lpush(key, value).await
+    }
+
+    pub async fn rpush(&self, key: impl RedisKey, value: impl RedisValue) -> RedisResult<usize> {
+        let mut conn = self.connection.clone();
+        conn.rpush(key, value).await
     }
 
     pub async fn lrange(&self, key: impl RedisKey, start: isize, stop: isize) -> RedisResult<Vec<String>> {
@@ -84,6 +147,11 @@ impl RedisClient {
     pub async fn hget(&self, key: impl RedisKey, field: impl RedisField) -> RedisResult<Option<String>> {
         let mut conn = self.connection.clone();
         conn.hget(key, field).await
+    }
+
+    pub async fn hdel(&self, key: impl RedisKey, field: impl RedisField) -> RedisResult<usize> {
+        let mut conn = self.connection.clone();
+        conn.hdel(key, field).await
     }
 
     pub async fn hgetall(&self, key: impl RedisKey) -> RedisResult<HashMap<String, String>> {
@@ -130,5 +198,26 @@ impl RedisClient {
                 message: format!("Redis error: {}", e),
             }),
         }
+    }
+
+    // PUB/SUB METHODS
+    // game_channel::{game_id}
+    pub async fn publish(&self, channel: impl RedisKey, message: impl RedisValue) -> RedisResult<usize> {
+        let mut conn = self.connection.clone(); // Cheap clone - same TCP connection
+        conn.publish(channel, message).await
+    }
+
+    pub async fn get_pubsub(&self) -> RedisResult<PubSub> {
+        self.client.get_async_pubsub().await
+    }
+
+    pub async fn create_shared_pubsub(&self, patterns: Vec<String>) -> RedisResult<PubSub> {
+        let mut pubsub = self.get_pubsub().await?;
+        
+        for pattern in patterns {
+            pubsub.psubscribe(pattern).await?;
+        }
+        
+        Ok(pubsub)
     }
 }

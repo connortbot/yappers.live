@@ -10,6 +10,7 @@ pub enum ErrorCode {
     PlayerAlreadyExists,
     InvalidGameCode,
     PlayerAlreadyInGame,
+    UsernameTaken,
     
     
     InvalidInput(String),
@@ -44,7 +45,20 @@ impl From<String> for ErrorResponse {
     }
 }
 
-pub const REDIS_ERROR: fn(&str) -> ErrorResponse = |e| ErrorResponse {
-    error: ErrorCode::InternalServerError,
-    message: format!("Redis error: {}", e),
-};
+impl From<redis::RedisError> for ErrorResponse {
+    fn from(error: redis::RedisError) -> Self {
+        ErrorResponse {
+            error: ErrorCode::InternalServerError,
+            message: format!("Redis error: {}", error),
+        }
+    }
+}
+
+impl From<serde_json::Error> for ErrorResponse {
+    fn from(error: serde_json::Error) -> Self {
+        ErrorResponse {
+            error: ErrorCode::InternalServerError,
+            message: format!("JSON serialization error: {}", error),
+        }
+    }
+}

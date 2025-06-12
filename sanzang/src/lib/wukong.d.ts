@@ -111,7 +111,7 @@ export interface components {
             auth_token: string;
             game: components["schemas"]["Game"];
         };
-        ErrorCode: "GameNotFound" | "GameFull" | "PlayerNotFound" | "PlayerAlreadyExists" | "InvalidGameCode" | "PlayerAlreadyInGame" | {
+        ErrorCode: "GameNotFound" | "GameFull" | "PlayerNotFound" | "PlayerAlreadyExists" | "InvalidGameCode" | "PlayerAlreadyInGame" | "UsernameTaken" | {
             InvalidInput: string;
         } | "InternalServerError";
         ErrorResponse: {
@@ -127,7 +127,6 @@ export interface components {
             /** Format: int32 */
             max_players: number;
             players: components["schemas"]["Player"][];
-            team_draft: components["schemas"]["TeamDraftManager"];
         };
         GameDetailsResponse: {
             game: components["schemas"]["Game"];
@@ -148,33 +147,6 @@ export interface components {
             id: string;
             username: string;
         };
-        Round: {
-            competition: string;
-            current_drafter_id: string;
-            player_to_picks: {
-                [key: string]: string[];
-            };
-            pool: string;
-            /** Format: int32 */
-            round: number;
-            starting_drafter_id: string;
-            /** Format: int32 */
-            team_size: number;
-        };
-        TeamDraftManager: {
-            /** Format: int32 */
-            max_rounds: number;
-            phase: components["schemas"]["TeamDraftPhase"];
-            player_points: {
-                [key: string]: number;
-            };
-            round_data: components["schemas"]["Round"];
-            yapper_id: string;
-            /** Format: int32 */
-            yapper_index: number;
-        };
-        /** @enum {string} */
-        TeamDraftPhase: "YapperChoosing" | "Drafting" | "Awarding" | "Complete";
     };
     responses: never;
     parameters: never;

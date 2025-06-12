@@ -5,7 +5,7 @@ import type { Game } from '../lib/bindings/Game'
 import type { Player } from '../lib/bindings/Player'
 import type { WebSocketMessage } from '../lib/bindings/WebSocketMessage'
 import type { GameMessage } from '../lib/bindings/GameMessage'
-import type { TeamDraftManager } from '../lib/bindings/TeamDraftManager'
+import type { TeamDraftState } from '../lib/bindings/TeamDraftState'
 import { createWukongWebSocket } from '../lib/wukongClient'
 import { GameStartedMessage } from '../lib/bindings/GameStartedMessage'
 
@@ -22,7 +22,7 @@ interface GameContextState {
   latestEvent: GameMessage | null
   
   // Game mode states
-  teamDraftState: TeamDraftManager | null
+  teamDraftState: TeamDraftState | null
   
   loading: boolean
   error: string | null

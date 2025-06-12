@@ -3,11 +3,14 @@ use axum::{
     Router,
     extract::State,
     Json,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use std::sync::Arc;
-use crate::game::game_manager::{GameManager, Game};
+use crate::game::game_manager::{GameManager};
+use crate::game::types::Game;
 
 use crate::error::ErrorResponse;
 
@@ -34,6 +37,14 @@ pub struct JoinGameResponse {
     pub auth_token: String,
 }
 
+impl IntoResponse for ErrorResponse {
+    fn into_response(self) -> Response {
+        let status_code = StatusCode::BAD_REQUEST;
+        let json = Json(self);
+        (status_code, json).into_response()
+    }
+}
+
 #[utoipa::path(
     post,
     path = "/game/create",
@@ -46,7 +57,7 @@ pub struct JoinGameResponse {
 pub async fn create_game(
     State(game_manager): State<Arc<GameManager>>,
     Json(payload): Json<CreateGameRequest>
-) -> Result<Json<CreateGameResponse>, String> {
+) -> Result<Json<CreateGameResponse>, ErrorResponse> {
     println!("[POST: /game/create]");
     match game_manager.create_game(payload.username).await {
         Ok(game_entry) => {
@@ -55,7 +66,7 @@ pub async fn create_game(
         }
         Err(e) => {
             println!("[POST: /game/create] Error: {}", e);
-            Err(e.to_string())
+            Err(e)
         }
     }
 }
@@ -72,7 +83,7 @@ pub async fn create_game(
 pub async fn join_game(
     State(game_manager): State<Arc<GameManager>>,
     Json(payload): Json<JoinGameRequest>
-) -> Result<Json<JoinGameResponse>, String> {
+) -> Result<Json<JoinGameResponse>, ErrorResponse> {
     println!("[POST: /game/join]");
     match game_manager.join_game_by_code(payload.username, payload.game_code).await {
         Ok(game_entry) => {
@@ -81,7 +92,7 @@ pub async fn join_game(
         }
         Err(e) => {
             println!("[POST: /game/join] Error: {}", e);
-            Err(e.to_string())
+            Err(e)
         }
     }
 }

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use crate::team_draft::messages::{TeamDraftMessage, TeamDraftTimerReason};
-use crate::team_draft::state::TeamDraftManager;
+use crate::team_draft::types::TeamDraftState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -14,7 +14,7 @@ pub enum GameMode {
 #[ts(export)]
 pub struct GameStartedMessage {
     pub game_type: GameMode,
-    pub initial_team_draft_state: Option<TeamDraftManager>,
+    pub initial_team_draft_state: Option<TeamDraftState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

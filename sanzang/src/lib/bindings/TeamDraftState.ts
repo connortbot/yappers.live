@@ -2,4 +2,4 @@
 import type { Round } from "./Round";
 import type { TeamDraftPhase } from "./TeamDraftPhase";
 
-export type TeamDraftManager = { yapper_id: string, yapper_index: number, max_rounds: number, phase: TeamDraftPhase, round_data: Round, player_points: { [key in string]?: number }, };
+export type TeamDraftState = { yapper_id: string, yapper_index: number, max_rounds: number, phase: TeamDraftPhase, round_data: Round, player_points: { [key in string]?: number }, };

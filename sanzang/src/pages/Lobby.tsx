@@ -75,8 +75,6 @@ export default function Lobby() {
 
   useEffect(() => {
     if (latestEvent) {
-      console.log(latestEvent)
-      
       if (latestEvent.type === 'GameStarted') {
         const gameStartedEvent = latestEvent as GameStartedMessage
         switch (gameStartedEvent.game_type.type) {
