@@ -286,6 +286,12 @@
             ]
           },
           {
+            "type": "string",
+            "enum": [
+              "UsernameTaken"
+            ]
+          },
+          {
             "type": "object",
             "required": [
               "InvalidInput"

@@ -11,8 +11,8 @@ use serde_json;
 
 
 pub const SERVER_ONLY_AUTHORIZED: &str = "00000000-0000-0000-0000-000000000000";
-pub const DEFAULT_TEAM_SIZE: u8 = 2;
-pub const DEFAULT_MAX_ROUNDS: u8 = 3;
+pub const DEFAULT_TEAM_SIZE: u8 = 1;
+pub const DEFAULT_MAX_ROUNDS: u8 = 2;
 
 pub struct TeamDraftService {
     redis_client: RedisClient,
@@ -153,11 +153,6 @@ impl TeamDraftService {
                     }
                 }
                 
-                let player_points_key = key("team_draft")?.field(&game_id)?.field("player_points")?.get_key()?;
-                for player in &players {
-                    self.redis_client.hset(&player_points_key, &player.id, &0u8).await?;
-                }
-                
                 Ok(vec![
                     GameMessage::HaltTimer(
                         crate::game::messages::HaltTimer {
@@ -288,6 +283,7 @@ impl TeamDraftService {
                         .filter_map(|(k, v)| v.parse().ok().map(|points| (k, points)))
                         .collect();
                     
+                    self.redis_client.del(&player_points_key).await?;
                     self.init_state_cached(game_id.clone(), players[0].clone()).await?;
                     
                     messages.push(GameMessage::TeamDraft(TeamDraftMessage::CompleteGame(
@@ -344,8 +340,6 @@ impl TeamDraftService {
                             self.redis_client.del(&player_picks_key).await?;
                         }
                     }
-                    
-                    self.redis_client.del(&player_points_key).await?;
                     
                     messages.push(GameMessage::HaltTimer(
                         crate::game::messages::HaltTimer {

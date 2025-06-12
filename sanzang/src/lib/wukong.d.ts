@@ -111,7 +111,7 @@ export interface components {
             auth_token: string;
             game: components["schemas"]["Game"];
         };
-        ErrorCode: "GameNotFound" | "GameFull" | "PlayerNotFound" | "PlayerAlreadyExists" | "InvalidGameCode" | "PlayerAlreadyInGame" | {
+        ErrorCode: "GameNotFound" | "GameFull" | "PlayerNotFound" | "PlayerAlreadyExists" | "InvalidGameCode" | "PlayerAlreadyInGame" | "UsernameTaken" | {
             InvalidInput: string;
         } | "InternalServerError";
         ErrorResponse: {

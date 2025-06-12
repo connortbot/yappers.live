@@ -214,6 +214,16 @@ impl GameManager {
             }).await?
         };
 
+        let current_players = self.get_players_cached(&game_id).await?;
+        for player in current_players {
+            if player.username == player_username {
+                return Err(ErrorResponse{
+                    error: ErrorCode::PlayerAlreadyInGame,
+                    message: "Username taken.".to_string(),
+                });
+            }
+        }
+
         self.join_game(player_username, game_id).await
     }
 

@@ -10,6 +10,7 @@ pub enum ErrorCode {
     PlayerAlreadyExists,
     InvalidGameCode,
     PlayerAlreadyInGame,
+    UsernameTaken,
     
     
     InvalidInput(String),
