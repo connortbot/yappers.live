@@ -18,7 +18,7 @@
 }
 
 .animate-bg-scroll {
-  background: url("bg-logo.png") repeat 0 0;
+  background: url("/bg-logo.png") repeat 0 0;
   background-size: 50px 50px;
   animation: bg-scrolling-reverse 5s infinite linear;
 }
