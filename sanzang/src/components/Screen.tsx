@@ -1,5 +1,3 @@
-import { AnimatedBackground } from './AnimatedBackground';
-
 interface ScreenProps {
   children: React.ReactNode;
   centered?: boolean;
