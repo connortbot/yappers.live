@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use crate::game::messages::{WebSocketMessage, GameMessage, GameMode, GameStartedMessage, client_safe_ws_message};
 use crate::game::game_manager::{GameManager, GameResult};
+use crate::game::game_mode::GameModeManager;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,9 +86,9 @@ impl GameProcessor {
                         match game_manager.get_game(game_id).await {
                             Ok(Some(game)) => {
                                 let num_players = game.players.len() as u8;
+                                let team_draft_service = game_manager.get_team_draft_service();
                                 
-                                if let Err(e) = game_manager.get_team_draft_service()
-                                    .set_game_settings(game_id.to_string(), num_players).await {
+                                if let Err(e) = GameModeManager::set_game_settings(team_draft_service, game_id.to_string(), num_players).await {
                                     println!("[GameProcessor] Error setting team draft game settings: {}", e);
                                 }
                                 
@@ -127,8 +128,12 @@ impl GameProcessor {
             TeamDraft(team_draft_message) => {
                 println!("[GameProcessor] Processing TeamDraft message: {:?}", team_draft_message);
                 if let Some(auth_token) = &ws_message.auth_token {
-                    let required_player_id = match game_manager.get_team_draft_service()
-                        .get_correct_player_source_id(game_id.to_string(), team_draft_message.clone()).await {
+                    let team_draft_service = game_manager.get_team_draft_service();
+                    let required_player_id = match GameModeManager::get_correct_player_source_id(
+                        team_draft_service,
+                        game_id.to_string(),
+                        GameMessage::TeamDraft(team_draft_message.clone())
+                    ).await {
                         Ok(player_id) => player_id,
                         Err(e) => {
                             println!("[GameProcessor] Error getting required player ID for team draft message: {}", e);
@@ -150,8 +155,12 @@ impl GameProcessor {
                                 }
                             };
                             
-                            match game_manager.get_team_draft_service()
-                                .handle_message(game_id.to_string(), players, team_draft_message.clone()).await {
+                            match GameModeManager::handle_message(
+                                team_draft_service,
+                                game_id.to_string(),
+                                players,
+                                GameMessage::TeamDraft(team_draft_message.clone())
+                            ).await {
                                 Ok(broadcast_messages) => {
                                     if !broadcast_messages.is_empty() {
                                         println!("[GameProcessor] Publishing {} broadcast messages", broadcast_messages.len());

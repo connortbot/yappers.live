@@ -3,7 +3,7 @@ use tokio::sync::{RwLock, broadcast, mpsc};
 use uuid::Uuid;
 use chrono;
 use rand::{Rng, rng};
-use crate::game::messages::{GameMessage, WebSocketMessage};
+use crate::game::messages::{GameMessage, WebSocketMessage, GameMode};
 use crate::game::types::{Player, Game};
 use crate::game::queue::{GameProcessor, QueuedMessage, BroadcastMessageChunk};
 use crate::error::{ErrorResponse, ErrorCode};
@@ -13,6 +13,7 @@ use tokio::task::JoinHandle;
 use crate::cache::redis_client::RedisClient;
 use crate::cache::key_builder::key;
 use crate::team_draft::state::TeamDraftService;
+use crate::game::game_mode::GameModeManager;
 use futures::StreamExt;
 
 pub const MAX_PLAYERS: u8 = 8;
@@ -44,7 +45,7 @@ impl GameManager {
             .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
             
         let redis_client = RedisClient::new(redis_url).await.unwrap();
-        let team_draft_service = TeamDraftService::new(redis_client.clone());
+        let team_draft_service = TeamDraftService::new(redis_client.clone(), GameMode::TeamDraft);
         
         let game_processors: Arc<RwLock<HashMap<String, mpsc::Sender<QueuedMessage>>>> = 
             Arc::new(RwLock::new(HashMap::new()));
@@ -415,7 +416,7 @@ impl GameManager {
         let game_pattern = format!("{}*", game_base_key);
         self.redis_client.pdel(&game_pattern).await?;
 
-        self.team_draft_service.cleanup_state_cached(game_id.to_string()).await?;
+        GameModeManager::cleanup_state_cached(&self.team_draft_service, game_id.to_string()).await?;
         
         if let Some(code) = game_code {
             let key_string = key("game_code")?.field(&code)?.get_key()?;
@@ -658,7 +659,7 @@ impl GameManager {
         self.redis_client.set(&created_at_key, chrono::Utc::now().timestamp() as i32).await?;
 
         // Initialize team draft state
-        self.team_draft_service.init_state_cached(game_id.to_string(), host_player.clone()).await?;
+        GameModeManager::init_state_cached(&self.team_draft_service, game_id.to_string(), host_player.clone()).await?;
 
         Ok(())
     }
