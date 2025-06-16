@@ -11,6 +11,7 @@ pub enum ErrorCode {
     InvalidGameCode,
     PlayerAlreadyInGame,
     UsernameTaken,
+    InvalidGameMode,
     
     
     InvalidInput(String),
