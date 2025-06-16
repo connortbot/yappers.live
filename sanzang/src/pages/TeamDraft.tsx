@@ -35,6 +35,7 @@ export default function TeamDraft() {
 
   const [poolInput, setPoolInput] = useState('')
   const [competitionInput, setCompetitionInput] = useState('')
+  const [draftStarted, setDraftStarted] = useState(false)
   const [showPlayerSelection, setShowPlayerSelection] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
   const [selectedPlayerForAward, setSelectedPlayerForAward] = useState<string | null>(null)
@@ -101,6 +102,7 @@ export default function TeamDraft() {
     if (selectedPlayerId) {
       const startDraftMessage = createStartDraftMessage(selectedPlayerId)
       sendMessage(startDraftMessage)
+      setDraftStarted(true)
     }
   }
 
@@ -153,6 +155,7 @@ export default function TeamDraft() {
   const resetState = () => {
     setPoolInput('')
     setCompetitionInput('')
+    setDraftStarted(false)
     setCurrentPick('')
     setCurrentPickDrafter('')
     setSelectedPlayerId(null)
@@ -290,13 +293,13 @@ export default function TeamDraft() {
       }
 
       return (
-        <Section title={isYapper ? "What is this round all about?" : `${getPlayerUsername(teamDraftState.yapper_id) || 'Someone'} is the yapper!`}>
+        <Section title={isYapper && !draftStarted ? "What is this round all about?" : `${getPlayerUsername(teamDraftState.yapper_id) || 'Someone'} is the yapper!`}>
           <div className="space-y-4 text-center">
             <p className="font-secondary text-pencil text-base sm:text-lg italic">
               Choose someone/something that is...
             </p>
             
-            {isYapper ? (
+            {isYapper && !draftStarted ? (
               <FormRow>
                 <Input
                   type="text"
@@ -316,7 +319,7 @@ export default function TeamDraft() {
               and is competing to win at...
             </p>
 
-            {isYapper ? (
+            {isYapper && !draftStarted ? (
               <FormRow>
                 <Input
                   type="text"
@@ -332,7 +335,7 @@ export default function TeamDraft() {
               </div>
             )}
 
-            {isYapper && (
+            {isYapper && !draftStarted && (
               <Button
                 variant="secondary"
                 size="medium"
