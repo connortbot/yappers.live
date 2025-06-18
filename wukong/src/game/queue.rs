@@ -82,12 +82,14 @@ impl GameProcessor {
             GameStarted(game_started_msg) => {
                 let player_id = ws_message.player_id.clone();
                 let updated_ws_message = match &game_started_msg.game_type {
+                    GameMode::MindMatch => {
+                        client_safe_ws_message(ws_message)
+                    }
                     GameMode::TeamDraft => {
                         match game_manager.get_game(game_id).await {
                             Ok(Some(game)) => {
                                 let num_players = game.players.len() as u8;
-                                let team_draft_service = game_manager.get_team_draft_service();
-                                
+                                let team_draft_service = game_manager.get_game_mode_service(GameMode::TeamDraft); 
                                 if let Err(e) = GameModeManager::set_game_settings(team_draft_service, game_id.to_string(), num_players).await {
                                     println!("[GameProcessor] Error setting team draft game settings: {}", e);
                                 }
@@ -128,7 +130,7 @@ impl GameProcessor {
             TeamDraft(team_draft_message) => {
                 println!("[GameProcessor] Processing TeamDraft message: {:?}", team_draft_message);
                 if let Some(auth_token) = &ws_message.auth_token {
-                    let team_draft_service = game_manager.get_team_draft_service();
+                    let team_draft_service = game_manager.get_game_mode_service(GameMode::TeamDraft);
                     let required_player_id = match GameModeManager::get_correct_player_source_id(
                         team_draft_service,
                         game_id.to_string(),

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use crate::team_draft::messages::{TeamDraftMessage, TeamDraftTimerReason};
+use crate::mind_match::messages::{MindMatchMessage};
 use crate::team_draft::types::TeamDraftState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -8,6 +9,7 @@ use crate::team_draft::types::TeamDraftState;
 #[serde(tag = "type")]
 pub enum GameMode {
     TeamDraft,
+    MindMatch,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -48,6 +50,7 @@ pub enum GameMessage {
     BackToLobby(BackToLobby),
     
     TeamDraft(TeamDraftMessage),
+    MindMatch(MindMatchMessage),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

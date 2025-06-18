@@ -26,10 +26,6 @@ impl TeamDraftService {
             base: GameModeService::new(redis_client, GameMode::TeamDraft),
         }
     }
-
-    pub fn get_redis_client(&self) -> &RedisClient {
-        self.base.get_redis_client()
-    }
 }
 
 #[async_trait]
@@ -41,45 +37,45 @@ impl GameModeManager for TeamDraftService {
     async fn init_state_cached(&self, game_id: String, host_player: Player) -> Result<(), ErrorResponse> {
         let base_key = key("team_draft")?.field(&game_id)?.get_key()?;
         let pattern = format!("{}*", base_key);
-        self.get_redis_client().pdel(&pattern).await?;
+        self.base.get_redis_client().pdel(&pattern).await?;
 
         let yapper_id_key = key("team_draft")?.field(&game_id)?.field("yapper_id")?.get_key()?;
-        self.get_redis_client().set(&yapper_id_key, &host_player.id).await?;
+        self.base.get_redis_client().set(&yapper_id_key, &host_player.id).await?;
 
         let yapper_index_key = key("team_draft")?.field(&game_id)?.field("yapper_index")?.get_key()?;
-        self.get_redis_client().set(&yapper_index_key, &0u8).await?;
+        self.base.get_redis_client().set(&yapper_index_key, &0u8).await?;
 
         let max_rounds_key = key("team_draft")?.field(&game_id)?.field("max_rounds")?.get_key()?;
-        self.get_redis_client().set(&max_rounds_key, &DEFAULT_MAX_ROUNDS).await?;
+        self.base.get_redis_client().set(&max_rounds_key, &DEFAULT_MAX_ROUNDS).await?;
 
         let phase_key = key("team_draft")?.field(&game_id)?.field("phase")?.get_key()?;
         let phase_json = serde_json::to_string(&TeamDraftPhase::YapperChoosing)?;
-        self.get_redis_client().set(&phase_key, &phase_json).await?;
+        self.base.get_redis_client().set(&phase_key, &phase_json).await?;
 
         let round_key = key("team_draft")?.field(&game_id)?.field("round")?.field("round")?.get_key()?;
-        self.get_redis_client().set(&round_key, &1u8).await?;
+        self.base.get_redis_client().set(&round_key, &1u8).await?;
 
         let team_size_key = key("team_draft")?.field(&game_id)?.field("round")?.field("team_size")?.get_key()?;
-        self.get_redis_client().set(&team_size_key, &DEFAULT_TEAM_SIZE).await?;
+        self.base.get_redis_client().set(&team_size_key, &DEFAULT_TEAM_SIZE).await?;
 
         let pool_key = key("team_draft")?.field(&game_id)?.field("round")?.field("pool")?.get_key()?;
-        self.get_redis_client().set(&pool_key, "").await?;
+        self.base.get_redis_client().set(&pool_key, "").await?;
 
         let competition_key = key("team_draft")?.field(&game_id)?.field("round")?.field("competition")?.get_key()?;
-        self.get_redis_client().set(&competition_key, "").await?;
+        self.base.get_redis_client().set(&competition_key, "").await?;
 
         let starting_drafter_key = key("team_draft")?.field(&game_id)?.field("round")?.field("starting_drafter_id")?.get_key()?;
-        self.get_redis_client().set(&starting_drafter_key, "").await?;
+        self.base.get_redis_client().set(&starting_drafter_key, "").await?;
 
         let current_drafter_key = key("team_draft")?.field(&game_id)?.field("round")?.field("current_drafter_id")?.get_key()?;
-        self.get_redis_client().set(&current_drafter_key, "").await?;
+        self.base.get_redis_client().set(&current_drafter_key, "").await?;
 
         Ok(())
     }
 
     async fn set_game_settings(&self, game_id: String, max_rounds: u8) -> Result<(), ErrorResponse> {
         let max_rounds_key = key("team_draft")?.field(game_id.clone())?.field("max_rounds")?.get_key()?;
-        self.get_redis_client().set(&max_rounds_key, &max_rounds).await?;
+        self.base.get_redis_client().set(&max_rounds_key, &max_rounds).await?;
 
         Ok(())
     }
@@ -87,7 +83,7 @@ impl GameModeManager for TeamDraftService {
     async fn cleanup_state_cached(&self, game_id: String) -> Result<(), ErrorResponse> {
         let team_draft_base_key = key("team_draft")?.field(&game_id)?.get_key()?;
         let team_draft_pattern = format!("{}*", team_draft_base_key);
-        self.get_redis_client().pdel(&team_draft_pattern).await?;
+        self.base.get_redis_client().pdel(&team_draft_pattern).await?;
 
         Ok(())
     }
@@ -95,7 +91,7 @@ impl GameModeManager for TeamDraftService {
     async fn get_correct_player_source_id(&self, game_id: String, message: GameMessage) -> Result<String, ErrorResponse> {
         if let GameMessage::TeamDraft(team_draft_msg) = message {
             let yapper_id_key = key("team_draft")?.field(game_id.clone())?.field("yapper_id")?.get_key()?;
-            let yapper_id = match self.get_redis_client().get(&yapper_id_key).await {
+            let yapper_id = match self.base.get_redis_client().get(&yapper_id_key).await {
                 Ok(Some(yapper_id)) => yapper_id,
                 _ => return Err(ErrorResponse {
                     error: ErrorCode::GameNotFound,
@@ -109,7 +105,7 @@ impl GameModeManager for TeamDraftService {
                 TeamDraftMessage::StartDraft { .. } => Ok(yapper_id),
                 TeamDraftMessage::DraftPick { .. } => {
                     let current_drafter_key = key("team_draft")?.field(&game_id)?.field("round")?.field("current_drafter_id")?.get_key()?;
-                    match self.get_redis_client().get(&current_drafter_key).await {
+                    match self.base.get_redis_client().get(&current_drafter_key).await {
                         Ok(Some(current_drafter_id)) => Ok(current_drafter_id),
                         Ok(None) => Err(ErrorResponse {
                             error: ErrorCode::GameNotFound,
@@ -139,7 +135,7 @@ impl GameModeManager for TeamDraftService {
             match team_draft_msg {
                 TeamDraftMessage::SetPool(set_pool_msg) => {
                     let pool_key = key("team_draft")?.field(&game_id)?.field("round")?.field("pool")?.get_key()?;
-                    self.get_redis_client().set(&pool_key, &set_pool_msg.pool).await?;
+                    self.base.get_redis_client().set(&pool_key, &set_pool_msg.pool).await?;
                     
                     Ok(vec![
                         GameMessage::TeamDraft(TeamDraftMessage::SetPool(set_pool_msg)),
@@ -147,7 +143,7 @@ impl GameModeManager for TeamDraftService {
                 },
                 TeamDraftMessage::SetCompetition(set_competition_msg) => {
                     let competition_key = key("team_draft")?.field(&game_id)?.field("round")?.field("competition")?.get_key()?;
-                    self.get_redis_client().set(&competition_key, &set_competition_msg.competition).await?;
+                    self.base.get_redis_client().set(&competition_key, &set_competition_msg.competition).await?;
                     
                     Ok(vec![
                         GameMessage::TeamDraft(TeamDraftMessage::SetCompetition(set_competition_msg)),
@@ -156,22 +152,22 @@ impl GameModeManager for TeamDraftService {
                 TeamDraftMessage::StartDraft(start_draft_msg) => {
                     let phase_key = key("team_draft")?.field(&game_id)?.field("phase")?.get_key()?;
                     let phase_json = serde_json::to_string(&TeamDraftPhase::Drafting)?;
-                    self.get_redis_client().set(&phase_key, &phase_json).await?;
+                    self.base.get_redis_client().set(&phase_key, &phase_json).await?;
                     
                     let starting_drafter_key = key("team_draft")?.field(&game_id)?.field("round")?.field("starting_drafter_id")?.get_key()?;
-                    self.get_redis_client().set(&starting_drafter_key, &start_draft_msg.starting_drafter_id).await?;
+                    self.base.get_redis_client().set(&starting_drafter_key, &start_draft_msg.starting_drafter_id).await?;
                     
                     let current_drafter_key = key("team_draft")?.field(&game_id)?.field("round")?.field("current_drafter_id")?.get_key()?;
-                    self.get_redis_client().set(&current_drafter_key, &start_draft_msg.starting_drafter_id).await?;
+                    self.base.get_redis_client().set(&current_drafter_key, &start_draft_msg.starting_drafter_id).await?;
                     
                     let yapper_id_key = key("team_draft")?.field(&game_id)?.field("yapper_id")?.get_key()?;
-                    let yapper_id: String = self.get_redis_client().get(&yapper_id_key).await?.unwrap_or_default();
+                    let yapper_id: String = self.base.get_redis_client().get(&yapper_id_key).await?.unwrap_or_default();
                     
                     for player in &players {
                         if player.id != yapper_id {
                             let player_picks_key = key("team_draft")?.field(&game_id)?.field("round")?.field("player_to_picks")?.field(&player.id)?.get_key()?;
                             // clear picks
-                            self.get_redis_client().del(&player_picks_key).await?;
+                            self.base.get_redis_client().del(&player_picks_key).await?;
                         }
                     }
                     
@@ -190,26 +186,26 @@ impl GameModeManager for TeamDraftService {
                 },
                 TeamDraftMessage::DraftPick(draft_pick_msg) => {
                     let player_picks_key = key("team_draft")?.field(&game_id)?.field("round")?.field("player_to_picks")?.field(&draft_pick_msg.drafter_id)?.get_key()?;
-                    self.get_redis_client().rpush(&player_picks_key, &draft_pick_msg.pick).await?;
+                    self.base.get_redis_client().rpush(&player_picks_key, &draft_pick_msg.pick).await?;
                     
                     let mut messages = vec![
                         GameMessage::TeamDraft(TeamDraftMessage::DraftPick(draft_pick_msg.clone())),
                     ];
                     
                     let team_size_key = key("team_draft")?.field(&game_id)?.field("round")?.field("team_size")?.get_key()?;
-                    let team_size: u8 = self.get_redis_client().get(&team_size_key).await?
+                    let team_size: u8 = self.base.get_redis_client().get(&team_size_key).await?
                         .unwrap_or_else(|| DEFAULT_TEAM_SIZE.to_string())
                         .parse()
                         .unwrap_or(DEFAULT_TEAM_SIZE);
                     
                     let yapper_id_key = key("team_draft")?.field(&game_id)?.field("yapper_id")?.get_key()?;
-                    let yapper_id: String = self.get_redis_client().get(&yapper_id_key).await?.unwrap_or_default();
+                    let yapper_id: String = self.base.get_redis_client().get(&yapper_id_key).await?.unwrap_or_default();
                     
                     let mut all_teams_complete = true;
                     for player in &players {
                         if player.id != yapper_id {
                             let player_picks_key = key("team_draft")?.field(&game_id)?.field("round")?.field("player_to_picks")?.field(&player.id)?.get_key()?;
-                            let picks_count = self.get_redis_client().lrange(&player_picks_key, 0, -1).await?.len() as u8;
+                            let picks_count = self.base.get_redis_client().lrange(&player_picks_key, 0, -1).await?.len() as u8;
                             if picks_count < team_size {
                                 all_teams_complete = false;
                                 break;
@@ -220,7 +216,7 @@ impl GameModeManager for TeamDraftService {
                     if all_teams_complete {
                         let phase_key = key("team_draft")?.field(&game_id)?.field("phase")?.get_key()?;
                         let phase_json = serde_json::to_string(&TeamDraftPhase::Awarding)?;
-                        self.get_redis_client().set(&phase_key, &phase_json).await?;
+                        self.base.get_redis_client().set(&phase_key, &phase_json).await?;
                         
                         messages.push(GameMessage::HaltTimer(
                             crate::game::messages::HaltTimer {
@@ -245,7 +241,7 @@ impl GameModeManager for TeamDraftService {
                         )));
                     } else {
                         let current_drafter_key = key("team_draft")?.field(&game_id)?.field("round")?.field("current_drafter_id")?.get_key()?;
-                        let current_drafter_id: String = self.get_redis_client().get(&current_drafter_key).await?.unwrap_or_default();
+                        let current_drafter_id: String = self.base.get_redis_client().get(&current_drafter_key).await?.unwrap_or_default();
                         
                         if let Some(current_index) = players.iter().position(|p| p.id == current_drafter_id) {
                             let mut next_index = (current_index + 1) % players.len();
@@ -253,7 +249,7 @@ impl GameModeManager for TeamDraftService {
                                 next_index = (next_index + 1) % players.len();
                             }
                             let next_drafter_id = &players[next_index].id;
-                            self.get_redis_client().set(&current_drafter_key, next_drafter_id).await?;
+                            self.base.get_redis_client().set(&current_drafter_key, next_drafter_id).await?;
                             
                             messages.push(GameMessage::HaltTimer(
                                 crate::game::messages::HaltTimer {
@@ -276,36 +272,36 @@ impl GameModeManager for TeamDraftService {
                 },
                 TeamDraftMessage::AwardPoint(award_point_msg) => {
                     let player_points_key = key("team_draft")?.field(&game_id)?.field("player_points")?.get_key()?;
-                    let current_points: Option<String> = self.get_redis_client().hget(&player_points_key, &award_point_msg.player_id).await?;
+                    let current_points: Option<String> = self.base.get_redis_client().hget(&player_points_key, &award_point_msg.player_id).await?;
                     let points: u8 = if let Some(points_str) = current_points {
                         points_str.parse().unwrap_or(0)
                     } else {
                         0
                     };
-                    self.get_redis_client().hset(&player_points_key, &award_point_msg.player_id, &(points + 1)).await?;
+                    self.base.get_redis_client().hset(&player_points_key, &award_point_msg.player_id, &(points + 1)).await?;
                     
                     let mut messages = vec![
                         GameMessage::TeamDraft(TeamDraftMessage::AwardPoint(award_point_msg)),
                     ];
                     
                     let round_key = key("team_draft")?.field(&game_id)?.field("round")?.field("round")?.get_key()?;
-                    let current_round: u8 = self.get_redis_client().get(&round_key).await?
+                    let current_round: u8 = self.base.get_redis_client().get(&round_key).await?
                         .unwrap_or_else(|| "1".to_string())
                         .parse()
                         .unwrap_or(1);
                     let max_rounds_key = key("team_draft")?.field(&game_id)?.field("max_rounds")?.get_key()?;
-                    let max_rounds: u8 = self.get_redis_client().get(&max_rounds_key).await?
+                    let max_rounds: u8 = self.base.get_redis_client().get(&max_rounds_key).await?
                         .unwrap_or_else(|| DEFAULT_MAX_ROUNDS.to_string())
                         .parse()
                         .unwrap_or(DEFAULT_MAX_ROUNDS);
                     
                     if current_round >= max_rounds {
-                        let final_points: HashMap<String, String> = self.get_redis_client().hgetall(&player_points_key).await?;
+                        let final_points: HashMap<String, String> = self.base.get_redis_client().hgetall(&player_points_key).await?;
                         let final_points_u8: HashMap<String, u8> = final_points.into_iter()
                             .filter_map(|(k, v)| v.parse().ok().map(|points| (k, points)))
                             .collect();
                         
-                        self.get_redis_client().del(&player_points_key).await?;
+                        self.base.get_redis_client().del(&player_points_key).await?;
                         GameModeManager::init_state_cached(self, game_id.clone(), players[0].clone()).await?;
                         
                         messages.push(GameMessage::TeamDraft(TeamDraftMessage::CompleteGame(
@@ -316,7 +312,7 @@ impl GameModeManager for TeamDraftService {
                     } else {
                         // Next round - update yapper
                         let yapper_index_key = key("team_draft")?.field(&game_id)?.field("yapper_index")?.get_key()?;
-                        let current_yapper_index: u8 = self.get_redis_client().get(&yapper_index_key).await?
+                        let current_yapper_index: u8 = self.base.get_redis_client().get(&yapper_index_key).await?
                             .unwrap_or_else(|| "0".to_string())
                             .parse()
                             .unwrap_or(0);
@@ -324,8 +320,8 @@ impl GameModeManager for TeamDraftService {
                         
                         let next_yapper_id = if let Some(next_yapper) = players.get(next_yapper_index as usize) {
                             let yapper_id_key = key("team_draft")?.field(&game_id)?.field("yapper_id")?.get_key()?;
-                            self.get_redis_client().set(&yapper_id_key, &next_yapper.id).await?;
-                            self.get_redis_client().set(&yapper_index_key, &next_yapper_index).await?;
+                            self.base.get_redis_client().set(&yapper_id_key, &next_yapper.id).await?;
+                            self.base.get_redis_client().set(&yapper_index_key, &next_yapper_index).await?;
                             next_yapper.id.clone()
                         } else {
                             players[0].id.clone() // fallback
@@ -334,32 +330,32 @@ impl GameModeManager for TeamDraftService {
                         // Reset round state
                         let phase_key = key("team_draft")?.field(&game_id)?.field("phase")?.get_key()?;
                         let phase_json = serde_json::to_string(&TeamDraftPhase::YapperChoosing)?;
-                        self.get_redis_client().set(&phase_key, &phase_json).await?;
+                        self.base.get_redis_client().set(&phase_key, &phase_json).await?;
                         
-                        self.get_redis_client().set(&round_key, &(current_round + 1)).await?;
+                        self.base.get_redis_client().set(&round_key, &(current_round + 1)).await?;
                         
                         let team_size_key = key("team_draft")?.field(&game_id)?.field("round")?.field("team_size")?.get_key()?;
-                        self.get_redis_client().set(&team_size_key, &DEFAULT_TEAM_SIZE).await?;
+                        self.base.get_redis_client().set(&team_size_key, &DEFAULT_TEAM_SIZE).await?;
                         
                         let pool_key = key("team_draft")?.field(&game_id)?.field("round")?.field("pool")?.get_key()?;
-                        self.get_redis_client().set(&pool_key, "").await?;
+                        self.base.get_redis_client().set(&pool_key, "").await?;
                         
                         let competition_key = key("team_draft")?.field(&game_id)?.field("round")?.field("competition")?.get_key()?;
-                        self.get_redis_client().set(&competition_key, "").await?;
+                        self.base.get_redis_client().set(&competition_key, "").await?;
                         
                         let starting_drafter_key = key("team_draft")?.field(&game_id)?.field("round")?.field("starting_drafter_id")?.get_key()?;
-                        self.get_redis_client().set(&starting_drafter_key, "").await?;
+                        self.base.get_redis_client().set(&starting_drafter_key, "").await?;
                         
                         let current_drafter_key = key("team_draft")?.field(&game_id)?.field("round")?.field("current_drafter_id")?.get_key()?;
-                        self.get_redis_client().set(&current_drafter_key, "").await?;
+                        self.base.get_redis_client().set(&current_drafter_key, "").await?;
                         
                         // Delete individual player pick lists
                         let yapper_id_key = key("team_draft")?.field(&game_id)?.field("yapper_id")?.get_key()?;
-                        let old_yapper_id: String = self.get_redis_client().get(&yapper_id_key).await?.unwrap_or_default();
+                        let old_yapper_id: String = self.base.get_redis_client().get(&yapper_id_key).await?.unwrap_or_default();
                         for player in &players {
                             if player.id != old_yapper_id {
                                 let player_picks_key = key("team_draft")?.field(&game_id)?.field("round")?.field("player_to_picks")?.field(&player.id)?.get_key()?;
-                                self.get_redis_client().del(&player_picks_key).await?;
+                                self.base.get_redis_client().del(&player_picks_key).await?;
                             }
                         }
                         

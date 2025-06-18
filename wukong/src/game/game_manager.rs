@@ -13,6 +13,7 @@ use tokio::task::JoinHandle;
 use crate::cache::redis_client::RedisClient;
 use crate::cache::key_builder::key;
 use crate::team_draft::state::TeamDraftService;
+use crate::mind_match::state::MindMatchService;
 use crate::game::game_mode::GameModeManager;
 use futures::StreamExt;
 
@@ -37,6 +38,7 @@ pub struct GameManager {
 
     // Game services
     team_draft_service: TeamDraftService,
+    mind_match_service: MindMatchService,
 }
 
 impl GameManager {
@@ -46,13 +48,15 @@ impl GameManager {
             
         let redis_client = RedisClient::new(redis_url).await.unwrap();
         let team_draft_service = TeamDraftService::new(redis_client.clone(), GameMode::TeamDraft);
-        
+        let mind_match_service = MindMatchService::new(redis_client.clone(), GameMode::MindMatch);
+
         let game_processors: Arc<RwLock<HashMap<String, mpsc::Sender<QueuedMessage>>>> = 
             Arc::new(RwLock::new(HashMap::new()));
         
         Self {
             redis_client,
             team_draft_service,
+            mind_match_service,
             game_broadcasters: RwLock::new(HashMap::new()),
             game_processors,
             processor_handles: RwLock::new(HashMap::new()),
@@ -121,8 +125,11 @@ impl GameManager {
         }
     }
 
-    pub fn get_team_draft_service(&self) -> &TeamDraftService {
-        &self.team_draft_service
+    pub fn get_game_mode_service(&self, game_mode: GameMode) -> &dyn GameModeManager {
+        match game_mode {
+            GameMode::TeamDraft => &self.team_draft_service,
+            GameMode::MindMatch => &self.mind_match_service,
+        }
     }
 
     pub async fn create_game(&self, host_username: String) -> GameResult<GameEntry> {
