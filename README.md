@@ -3,38 +3,36 @@
 
 Play now at [yappers.live](https://yappers.live).
 
-## Status
-This was a side project of mine to learn Rust, but it's also just a cheap and easy thing to host and play with friends.
-I am *actively using it*, but not necessarily *actively maintaining it*.
+## Current Game: Yappers
+A Spyfall-style party game for 3+ players:
+- One player is secretly the **Spy**
+- Everyone else knows the **Thing** (a player's name)
+- Discuss and figure out who the Spy is!
 
-Some games on the roadmap:
-- Mind Match (couples Q&A)
-- Wavelength
-- Two Truths and a Lie
-- Spyfall
+## Tech Stack
+- **Next.js 16** (App Router) - frontend + backend
+- **Tailwind CSS 4** - styling
+- **Redis** - game state storage (Valkey locally, Redis Cloud in prod)
+- **Vercel** - hosting
 
-## Contributing
-I'll actively look at PRs, in case someone wants to add a game, fix a bug, wtv.
-
-Tech stack:
-Frontend
-- Vite + React + Typescript
-- Hosted on Vercel
-
-Backend:
-- Rust monolith
-- Dockerized, -> Render hosting
-- Valkey for game state and pubsub
+## Development
 
 ```bash
-# Sanzang (frontend)
-npm run dev
+# Start Valkey locally
+docker compose -f docker-compose-local.yml up -d
 
-# Wukong (backend)
-cargo watch -x run
+# Start dev server
+bun run dev
 
-# Run Valkey locally
-docker-compose -f docker-compose-local.yml up -d
-valkey-cli
-MONITOR
+# Visit http://localhost:3000
 ```
+
+## Environment Variables
+
+```bash
+# .env.local
+REDIS_URL=redis://localhost:6379
+```
+
+## Contributing
+PRs welcome! The codebase is intentionally simple.
