@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useSyncExternalStore } from 'react'
+import { useState, useCallback, useEffect, useSyncExternalStore } from 'react'
 
 interface LocalPlayerData {
   playerId: string | null
@@ -16,17 +16,21 @@ const emptyData: LocalPlayerData = {
   username: null,
 }
 
+let cachedData: LocalPlayerData = emptyData
+let cachedRaw: string | null = null
+
 function getStoredData(): LocalPlayerData {
   if (typeof window === 'undefined') return emptyData
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      return JSON.parse(stored) as LocalPlayerData
+    if (stored !== cachedRaw) {
+      cachedRaw = stored
+      cachedData = stored ? JSON.parse(stored) as LocalPlayerData : emptyData
     }
-  } catch (e) {
-    console.error('Failed to load player data from localStorage:', e)
+    return cachedData
+  } catch {
+    return cachedData
   }
-  return emptyData
 }
 
 function subscribe(callback: () => void) {
@@ -35,38 +39,28 @@ function subscribe(callback: () => void) {
 }
 
 export function useLocalPlayer() {
-  const data = useSyncExternalStore(
-    subscribe,
-    getStoredData,
-    () => emptyData // Server snapshot
-  )
-  
+  const data = useSyncExternalStore(subscribe, getStoredData, () => emptyData)
   const [isLoaded, setIsLoaded] = useState(false)
   
-  // Mark as loaded after first render
-  if (typeof window !== 'undefined' && !isLoaded) {
+  useEffect(() => {
     setIsLoaded(true)
-  }
+  }, [])
 
-  // Save player data
   const savePlayer = useCallback((playerId: string, gameId: string, username: string) => {
-    const newData: LocalPlayerData = { playerId, gameId, username }
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData))
-      // Trigger storage event for other tabs
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ playerId, gameId, username }))
       window.dispatchEvent(new Event('storage'))
-    } catch (e) {
-      console.error('Failed to save player data to localStorage:', e)
+    } catch {
+      // Storage unavailable
     }
   }, [])
 
-  // Clear player data
   const clearPlayer = useCallback(() => {
     try {
       localStorage.removeItem(STORAGE_KEY)
       window.dispatchEvent(new Event('storage'))
-    } catch (e) {
-      console.error('Failed to clear player data from localStorage:', e)
+    } catch {
+      // Storage unavailable
     }
   }, [])
 

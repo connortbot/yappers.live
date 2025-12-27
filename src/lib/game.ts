@@ -4,18 +4,24 @@ import type { Game, Player, ChatMessage } from './types'
 
 const GAME_EXPIRY_HOURS = 24
 const GAME_EXPIRY_SECONDS = GAME_EXPIRY_HOURS * 60 * 60
+const MAX_CHAT_MESSAGES = 100
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+const CODE_LENGTH = 6
+const MIN_PLAYERS_FOR_ROUND = 3
 
-// Generate a random 6-character code
 function generateCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // Avoid confusing chars like 0/O, 1/I
   let code = ''
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length))
+  for (let i = 0; i < CODE_LENGTH; i++) {
+    code += CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length))
   }
   return code
 }
 
-// Get game by ID
+/**
+ * Retrieves a game by its unique ID.
+ * @param gameId - The game's UUID
+ * @returns The game object or null if not found
+ */
 export async function getGame(gameId: string): Promise<Game | null> {
   const client = redis()
   const data = await client.get(`game:${gameId}`)
@@ -23,7 +29,11 @@ export async function getGame(gameId: string): Promise<Game | null> {
   return JSON.parse(data) as Game
 }
 
-// Get game by code
+/**
+ * Retrieves a game by its 6-character join code.
+ * @param code - The game's join code (case-insensitive)
+ * @returns The game object or null if not found
+ */
 export async function getGameByCode(code: string): Promise<Game | null> {
   const client = redis()
   const gameId = await client.get(`code:${code.toUpperCase()}`)
@@ -31,7 +41,6 @@ export async function getGameByCode(code: string): Promise<Game | null> {
   return getGame(gameId)
 }
 
-// Save game to Redis
 async function saveGame(game: Game): Promise<void> {
   const client = redis()
   game.lastActivityAt = Date.now()
@@ -39,22 +48,28 @@ async function saveGame(game: Game): Promise<void> {
   await client.set(`code:${game.code}`, game.id, 'EX', GAME_EXPIRY_SECONDS)
 }
 
-// Create a new game
+async function deleteGame(game: Game): Promise<void> {
+  const client = redis()
+  await client.del(`game:${game.id}`)
+  await client.del(`code:${game.code}`)
+}
+
+/**
+ * Creates a new game with the given player as host.
+ * @param username - The host player's display name
+ * @returns The created game and the host's player ID
+ */
 export async function createGame(username: string): Promise<{ game: Game; playerId: string }> {
   const client = redis()
   const gameId = uuidv4()
   const playerId = uuidv4()
   
-  // Generate unique code
   let code = generateCode()
   while (await client.exists(`code:${code}`)) {
     code = generateCode()
   }
   
-  const player: Player = {
-    id: playerId,
-    username,
-  }
+  const player: Player = { id: playerId, username }
   
   const game: Game = {
     id: gameId,
@@ -64,33 +79,31 @@ export async function createGame(username: string): Promise<{ game: Game; player
     state: 'lobby',
     round: null,
     roundHistory: [],
-    thingPool: [], // Will be populated with player names when round starts
+    thingPool: [],
     chat: [],
     createdAt: Date.now(),
     lastActivityAt: Date.now(),
   }
   
   await saveGame(game)
-  
   return { game, playerId }
 }
 
-// Join an existing game
+/**
+ * Adds a player to an existing game.
+ * @param code - The game's join code
+ * @param username - The new player's display name (must be unique in the game)
+ * @returns The updated game and new player ID, or null if game not found or username taken
+ */
 export async function joinGame(code: string, username: string): Promise<{ game: Game; playerId: string } | null> {
   const game = await getGameByCode(code)
   if (!game) return null
   
-  // Check if username already exists in game
-  const existingPlayer = game.players.find(p => p.username.toLowerCase() === username.toLowerCase())
-  if (existingPlayer) {
-    return null // Username taken
-  }
+  const usernameTaken = game.players.some(p => p.username.toLowerCase() === username.toLowerCase())
+  if (usernameTaken) return null
   
   const playerId = uuidv4()
-  const player: Player = {
-    id: playerId,
-    username,
-  }
+  const player: Player = { id: playerId, username }
   
   game.players.push(player)
   await saveGame(game)
@@ -98,40 +111,43 @@ export async function joinGame(code: string, username: string): Promise<{ game: 
   return { game, playerId }
 }
 
-// Rejoin a game (for reconnecting players)
+/**
+ * Verifies a player is in a game (for reconnection).
+ * @param gameId - The game's UUID
+ * @param playerId - The player's UUID
+ * @returns The game if player is a member, null otherwise
+ */
 export async function rejoinGame(gameId: string, playerId: string): Promise<Game | null> {
   const game = await getGame(gameId)
   if (!game) return null
   
-  // Check if player is in the game
-  const player = game.players.find(p => p.id === playerId)
-  if (!player) return null
+  const isInGame = game.players.some(p => p.id === playerId)
+  if (!isInGame) return null
   
   return game
 }
 
-// Leave a game
+/**
+ * Removes a player from a game. Handles host reassignment and game cleanup.
+ * @param gameId - The game's UUID
+ * @param playerId - The leaving player's UUID
+ * @returns The updated game, or null if the game was deleted (last player left)
+ */
 export async function leaveGame(gameId: string, playerId: string): Promise<Game | null> {
   const game = await getGame(gameId)
   if (!game) return null
   
-  // Remove player
   game.players = game.players.filter(p => p.id !== playerId)
   
-  // If no players left, delete the game
   if (game.players.length === 0) {
-    const client = redis()
-    await client.del(`game:${game.id}`)
-    await client.del(`code:${game.code}`)
+    await deleteGame(game)
     return null
   }
   
-  // If host left, assign new host
   if (game.hostId === playerId) {
     game.hostId = game.players[0].id
   }
   
-  // If we were playing and spy left, end the round
   if (game.state === 'playing' && game.round?.spyId === playerId) {
     game.roundHistory.push(game.round)
     game.round = null
@@ -142,7 +158,13 @@ export async function leaveGame(gameId: string, playerId: string): Promise<Game 
   return game
 }
 
-// Send a chat message
+/**
+ * Adds a chat message to the game.
+ * @param gameId - The game's UUID
+ * @param playerId - The sender's player ID
+ * @param message - The message content
+ * @returns The updated game, or null if game/player not found
+ */
 export async function sendChatMessage(gameId: string, playerId: string, message: string): Promise<Game | null> {
   const game = await getGame(gameId)
   if (!game) return null
@@ -158,44 +180,36 @@ export async function sendChatMessage(gameId: string, playerId: string, message:
   
   game.chat.push(chatMessage)
   
-  // Keep only last 100 messages
-  if (game.chat.length > 100) {
-    game.chat = game.chat.slice(-100)
+  if (game.chat.length > MAX_CHAT_MESSAGES) {
+    game.chat = game.chat.slice(-MAX_CHAT_MESSAGES)
   }
   
   await saveGame(game)
   return game
 }
 
-// Start a new round
+/**
+ * Starts a new round. Randomly selects a spy and a "thing" from player names.
+ * @param gameId - The game's UUID
+ * @param playerId - The requesting player's ID (must be host)
+ * @returns The updated game, or null if conditions not met
+ */
 export async function startRound(gameId: string, playerId: string): Promise<Game | null> {
   const game = await getGame(gameId)
   if (!game) return null
   
-  // Only host can start round
   if (game.hostId !== playerId) return null
-  
-  // Need at least 3 players
-  if (game.players.length < 3) return null
-  
-  // Can't start if already playing
+  if (game.players.length < MIN_PLAYERS_FOR_ROUND) return null
   if (game.state === 'playing') return null
   
-  // Pick a random spy
   const spyIndex = Math.floor(Math.random() * game.players.length)
   const spy = game.players[spyIndex]
   
-  // Build the thing pool from player names (default)
   const thingPool = game.players.map(p => p.username)
-  
-  // Pick a random thing (excluding the spy's name for fairness)
   const availableThings = thingPool.filter(t => t !== spy.username)
   const thing = availableThings[Math.floor(Math.random() * availableThings.length)]
   
-  game.round = {
-    spyId: spy.id,
-    thing,
-  }
+  game.round = { spyId: spy.id, thing }
   game.state = 'playing'
   game.thingPool = thingPool
   
@@ -203,18 +217,19 @@ export async function startRound(gameId: string, playerId: string): Promise<Game
   return game
 }
 
-// End the current round
+/**
+ * Ends the current round and saves it to history.
+ * @param gameId - The game's UUID
+ * @param playerId - The requesting player's ID (must be host)
+ * @returns The updated game, or null if conditions not met
+ */
 export async function endRound(gameId: string, playerId: string): Promise<Game | null> {
   const game = await getGame(gameId)
   if (!game) return null
   
-  // Only host can end round
   if (game.hostId !== playerId) return null
-  
-  // Must be playing
   if (game.state !== 'playing' || !game.round) return null
   
-  // Save to history
   game.roundHistory.push(game.round)
   game.round = null
   game.state = 'lobby'

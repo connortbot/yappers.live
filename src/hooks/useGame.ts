@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { Game } from '@/lib/types'
 
-const POLL_INTERVAL = 2000 // 2 seconds
+const POLL_INTERVAL = 2000
 
 interface UseGameOptions {
   gameId: string | null
@@ -22,7 +22,6 @@ export function useGame({ gameId, playerId, enabled = true }: UseGameOptions): U
   const [game, setGame] = useState<Game | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchGame = useCallback(async () => {
     if (!gameId || !playerId) {
@@ -32,9 +31,7 @@ export function useGame({ gameId, playerId, enabled = true }: UseGameOptions): U
 
     try {
       const response = await fetch(`/api/games/${gameId}`, {
-        headers: {
-          'x-player-id': playerId,
-        },
+        headers: { 'x-player-id': playerId },
       })
 
       if (!response.ok) {
@@ -52,30 +49,17 @@ export function useGame({ gameId, playerId, enabled = true }: UseGameOptions): U
     }
   }, [gameId, playerId])
 
-  // Initial fetch and polling
   useEffect(() => {
     if (!enabled || !gameId || !playerId) {
       setIsLoading(false)
       return
     }
 
-    // Initial fetch
     fetchGame()
 
-    // Set up polling
-    intervalRef.current = setInterval(fetchGame, POLL_INTERVAL)
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-      }
-    }
+    const interval = setInterval(fetchGame, POLL_INTERVAL)
+    return () => clearInterval(interval)
   }, [enabled, gameId, playerId, fetchGame])
 
-  return {
-    game,
-    isLoading,
-    error,
-    refetch: fetchGame,
-  }
+  return { game, isLoading, error, refetch: fetchGame }
 }

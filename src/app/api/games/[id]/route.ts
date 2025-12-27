@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getGame, rejoinGame } from '@/lib/game'
 
-// GET /api/games/[id] - Get game state (for polling)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -10,7 +9,6 @@ export async function GET(
     const { id } = await params
     const playerId = request.headers.get('x-player-id')
 
-    // If playerId provided, verify player is in game (rejoin check)
     if (playerId) {
       const game = await rejoinGame(id, playerId)
       if (!game) {
@@ -19,7 +17,6 @@ export async function GET(
       return NextResponse.json({ game })
     }
 
-    // Otherwise just return game state
     const game = await getGame(id)
     if (!game) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 })

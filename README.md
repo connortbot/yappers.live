@@ -3,35 +3,27 @@
 
 Play now at [yappers.live](https://yappers.live).
 
-## Current Game: Yappers
-A Spyfall-style party game for 3+ players:
-- One player is secretly the **Spy**
-- Everyone else knows the **Thing** (a player's name)
-- Discuss and figure out who the Spy is!
+## Games:
+- Spyfall
+- Cross Clues (not done)
 
 ## Tech Stack
-- **Next.js 16** (App Router) - frontend + backend
-- **Tailwind CSS 4** - styling
-- **Redis** - game state storage (Valkey locally, Redis Cloud in prod)
-- **Vercel** - hosting
+- Bun
+- Next + tailwind
+- Valkey
 
-## Development
+## Local Dev
 
 ```bash
-# Start Valkey locally
+cp .env.example .env
+
+# Valkey
 docker compose -f docker-compose-local.yml up -d
 
-# Start dev server
+# Web
 bun run dev
 
 # Visit http://localhost:3000
-```
-
-## Environment Variables
-
-```bash
-# .env.local
-REDIS_URL=redis://localhost:6379
 ```
 
 ## Contributing

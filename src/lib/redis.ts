@@ -5,7 +5,6 @@ const getRedisClient = () => {
   return new Redis(redisUrl)
 }
 
-// Singleton pattern for Redis client
 let redisClient: Redis | null = null
 
 export const redis = () => {

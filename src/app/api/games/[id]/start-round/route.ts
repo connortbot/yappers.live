@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { startRound } from '@/lib/game'
+import { validatePlayerId } from '@/lib/validation'
 
-// POST /api/games/[id]/start-round - Start a new round
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -9,11 +9,7 @@ export async function POST(
   try {
     const { id } = await params
     const body = await request.json()
-    const { playerId } = body
-
-    if (!playerId || typeof playerId !== 'string') {
-      return NextResponse.json({ error: 'Player ID is required' }, { status: 400 })
-    }
+    const playerId = validatePlayerId(body.playerId)
 
     const game = await startRound(id, playerId)
 
@@ -25,6 +21,9 @@ export async function POST(
 
     return NextResponse.json({ game })
   } catch (error) {
+    if (error instanceof Error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error('Error starting round:', error)
     return NextResponse.json({ error: 'Failed to start round' }, { status: 500 })
   }
