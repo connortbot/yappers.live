@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createGame } from '@/lib/game'
-import { validateUsername } from '@/lib/validation'
+import { validateUsername, validateGameMode } from '@/lib/validation'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const username = validateUsername(body.username)
-    const result = await createGame(username)
+    const gameMode = validateGameMode(body.gameMode)
+    const result = await createGame(username, gameMode)
 
     return NextResponse.json({
       game: result.game,
