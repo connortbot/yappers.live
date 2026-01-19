@@ -9,6 +9,7 @@ import { AnimatedBackground } from '@/components/AnimatedBackground'
 import { GameCodeDisplay } from '@/components/GameCodeDisplay'
 import { PlayerList } from '@/components/PlayerList'
 import { ChatBox } from '@/components/ChatBox'
+import { CrossCluesGame } from '@/components/cross-clues/CrossCluesGame'
 import { useLocalPlayer } from '@/hooks/useLocalPlayer'
 import { useGame } from '@/hooks/useGame'
 
@@ -17,12 +18,12 @@ export default function GamePage() {
   const router = useRouter()
   const gameId = params.id as string
   const { playerId, username, isLoaded, clearPlayer } = useLocalPlayer()
-  const { game, isLoading, error } = useGame({ 
-    gameId, 
-    playerId, 
-    enabled: isLoaded && !!playerId 
+  const { game, isLoading, error } = useGame({
+    gameId,
+    playerId,
+    enabled: isLoaded && !!playerId
   })
-  
+
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -36,7 +37,7 @@ export default function GamePage() {
   // Handle leaving the game
   const handleLeave = async () => {
     if (!playerId) return
-    
+
     setActionLoading(true)
     try {
       await fetch(`/api/games/${gameId}/leave`, {
@@ -70,7 +71,7 @@ export default function GamePage() {
     }
   }
 
-  // Handle starting a round
+  // Handle starting a round (Yappers)
   const handleStartRound = async () => {
     if (!playerId) return
 
@@ -95,7 +96,7 @@ export default function GamePage() {
     }
   }
 
-  // Handle ending a round
+  // Handle ending a round (Yappers)
   const handleEndRound = async () => {
     if (!playerId) return
 
@@ -117,6 +118,100 @@ export default function GamePage() {
       setActionError(e instanceof Error ? e.message : 'Failed to end round')
     } finally {
       setActionLoading(false)
+    }
+  }
+
+  // Cross Clues handlers
+  const handleStartCrossClues = async () => {
+    if (!playerId) return
+
+    setActionLoading(true)
+    setActionError(null)
+
+    try {
+      const response = await fetch(`/api/games/${gameId}/cross-clues/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to start game')
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Failed to start game')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleEndCrossClues = async () => {
+    if (!playerId) return
+
+    setActionLoading(true)
+    setActionError(null)
+
+    try {
+      const response = await fetch(`/api/games/${gameId}/cross-clues/end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to end game')
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Failed to end game')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleSubmitClue = async (clue: string) => {
+    if (!playerId) return
+
+    const response = await fetch(`/api/games/${gameId}/cross-clues/clue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerId, clue }),
+    })
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || 'Failed to submit clue')
+    }
+  }
+
+  const handleVote = async (voteId: string, coordinate: string) => {
+    if (!playerId) return
+
+    const response = await fetch(`/api/games/${gameId}/cross-clues/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerId, voteId, coordinate }),
+    })
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || 'Failed to cast vote')
+    }
+  }
+
+  const handleForceResolve = async (voteId: string) => {
+    if (!playerId) return
+
+    const response = await fetch(`/api/games/${gameId}/cross-clues/force-resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerId, voteId }),
+    })
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || 'Failed to force resolve')
     }
   }
 
@@ -161,6 +256,46 @@ export default function GamePage() {
   const isHost = game.hostId === playerId
   const isSpy = game.round?.spyId === playerId
 
+  // Cross Clues game mode
+  if (game.gameMode === 'cross-clues') {
+    return (
+      <>
+        <AnimatedBackground />
+        <Screen>
+          <GameCodeDisplay code={game.code} />
+
+          <CrossCluesGame
+            game={game}
+            playerId={playerId || ''}
+            onSendMessage={handleSendMessage}
+            onStartGame={handleStartCrossClues}
+            onEndGame={handleEndCrossClues}
+            onSubmitClue={handleSubmitClue}
+            onVote={handleVote}
+            onForceResolve={handleForceResolve}
+            username={username || ''}
+            actionLoading={actionLoading}
+            actionError={actionError}
+          />
+
+          {/* Leave Game */}
+          <div className="mt-4">
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={handleLeave}
+              disabled={actionLoading}
+              className="w-full"
+            >
+              Leave Game
+            </Button>
+          </div>
+        </Screen>
+      </>
+    )
+  }
+
+  // Yappers game mode (default)
   return (
     <>
       <AnimatedBackground />
@@ -251,7 +386,7 @@ export default function GamePage() {
                 const spy = game.players.find(p => p.id === round.spyId)
                 return (
                   <li key={index} className="font-secondary text-pencil text-sm">
-                    Round {index + 1}: Thing was <strong>{round.thing}</strong>, 
+                    Round {index + 1}: Thing was <strong>{round.thing}</strong>,
                     Spy was <strong>{spy?.username || 'Unknown'}</strong>
                   </li>
                 )

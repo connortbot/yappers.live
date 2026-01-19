@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 
 interface LocalPlayerData {
   playerId: string | null
@@ -18,9 +18,11 @@ const emptyData: LocalPlayerData = {
 
 let cachedData: LocalPlayerData = emptyData
 let cachedRaw: string | null = null
+let isClientLoaded = false
 
 function getStoredData(): LocalPlayerData {
   if (typeof window === 'undefined') return emptyData
+  isClientLoaded = true
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored !== cachedRaw) {
@@ -33,6 +35,10 @@ function getStoredData(): LocalPlayerData {
   }
 }
 
+function getIsLoaded(): boolean {
+  return isClientLoaded
+}
+
 function subscribe(callback: () => void) {
   window.addEventListener('storage', callback)
   return () => window.removeEventListener('storage', callback)
@@ -40,11 +46,8 @@ function subscribe(callback: () => void) {
 
 export function useLocalPlayer() {
   const data = useSyncExternalStore(subscribe, getStoredData, () => emptyData)
-  const [isLoaded, setIsLoaded] = useState(false)
-  
-  useEffect(() => {
-    setIsLoaded(true)
-  }, [])
+  // Track if we're on the client side using useSyncExternalStore to avoid useEffect setState
+  const isLoaded = useSyncExternalStore(subscribe, getIsLoaded, () => false)
 
   const savePlayer = useCallback((playerId: string, gameId: string, username: string) => {
     try {

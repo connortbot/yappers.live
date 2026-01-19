@@ -8,11 +8,13 @@ import { Screen } from '@/components/Screen'
 import { Section } from '@/components/Section'
 import { AnimatedBackground } from '@/components/AnimatedBackground'
 import { useLocalPlayer } from '@/hooks/useLocalPlayer'
+import type { GameMode } from '@/lib/types'
 
 export default function CreateGame() {
   const router = useRouter()
   const { savePlayer } = useLocalPlayer()
   const [username, setUsername] = useState('')
+  const [gameMode, setGameMode] = useState<GameMode>('yappers')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,7 +31,7 @@ export default function CreateGame() {
       const response = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim() }),
+        body: JSON.stringify({ username: username.trim(), gameMode }),
       })
 
       const data = await response.json()
@@ -81,6 +83,40 @@ export default function CreateGame() {
                 maxLength={20}
                 disabled={isLoading}
               />
+            </div>
+
+            <div>
+              <label className="block font-secondary text-pencil text-sm mb-2">
+                Game Mode
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setGameMode('yappers')}
+                  disabled={isLoading}
+                  className={`flex-1 p-3 rounded-lg border-2 transition-all font-secondary text-sm ${
+                    gameMode === 'yappers'
+                      ? 'border-black bg-amber-100 text-black'
+                      : 'border-gray-300 bg-white text-pencil hover:border-gray-400'
+                  }`}
+                >
+                  <div className="font-bold">Yappers</div>
+                  <div className="text-xs mt-1 opacity-75">Find the spy!</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGameMode('cross-clues')}
+                  disabled={isLoading}
+                  className={`flex-1 p-3 rounded-lg border-2 transition-all font-secondary text-sm ${
+                    gameMode === 'cross-clues'
+                      ? 'border-black bg-amber-100 text-black'
+                      : 'border-gray-300 bg-white text-pencil hover:border-gray-400'
+                  }`}
+                >
+                  <div className="font-bold">Cross Clues</div>
+                  <div className="text-xs mt-1 opacity-75">Word grid co-op</div>
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-3">
