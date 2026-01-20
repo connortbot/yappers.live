@@ -332,8 +332,10 @@ function assignCardToPlayer(game: Game, playerId: string): boolean {
   const existingCard = game.crossClues.cards.find(c => c.assignedTo === playerId)
   if (existingCard) return false
 
-  // Find next unassigned card
-  const availableCard = game.crossClues.cards.find(c => c.assignedTo === null)
+  // Find next unassigned card whose coordinate hasn't been resolved yet
+  const availableCard = game.crossClues.cards.find(
+    c => c.assignedTo === null && !game.crossClues!.grid[c.coordinate]
+  )
   if (!availableCard) return false
 
   availableCard.assignedTo = playerId
