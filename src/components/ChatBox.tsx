@@ -15,13 +15,18 @@ interface ChatBoxProps {
 export function ChatBox({ messages, onSendMessage, placeholder = "Type a message" }: ChatBoxProps) {
   const [message, setMessage] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const prevMessageCountRef = useRef(0)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
   useEffect(() => {
-    scrollToBottom()
+    // Only scroll to bottom when new messages are added, not on every poll
+    if (messages.length > prevMessageCountRef.current) {
+      scrollToBottom()
+    }
+    prevMessageCountRef.current = messages.length
   }, [messages])
 
   const handleSend = () => {
