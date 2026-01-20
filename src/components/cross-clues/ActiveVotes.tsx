@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/Button'
+import { CrossCluesBoard } from './CrossCluesBoard'
 import type { CrossCluesState, CrossCluesVote, Player } from '@/lib/types'
 
 interface ActiveVotesProps {
@@ -11,9 +12,6 @@ interface ActiveVotesProps {
   onVote: (voteId: string, coordinate: string) => Promise<void>
   onForceResolve?: (voteId: string) => Promise<void>
 }
-
-const COLUMNS = ['A', 'B', 'C', 'D', 'E']
-const ROWS = ['1', '2', '3', '4', '5']
 
 function VoteCard({
   vote,
@@ -55,22 +53,6 @@ function VoteCard({
       await onForceResolve(vote.id)
     }
   }
-
-  // Get available cells (not already filled or discarded)
-  const getAvailableCells = () => {
-    const cells: string[] = []
-    for (const col of COLUMNS) {
-      for (const row of ROWS) {
-        const coord = `${col}${row}`
-        if (!crossClues.grid[coord]) {
-          cells.push(coord)
-        }
-      }
-    }
-    return cells
-  }
-
-  const availableCells = getAvailableCells()
 
   return (
     <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-300 mb-3">
@@ -118,21 +100,12 @@ function VoteCard({
           <p className="font-secondary text-sm text-gray-600 mb-2">
             Select a cell:
           </p>
-          <div className="grid grid-cols-5 gap-1 mb-3">
-            {availableCells.map(coord => (
-              <button
-                key={coord}
-                type="button"
-                onClick={() => setSelectedCoord(coord)}
-                className={`p-2 text-sm font-bold rounded border-2 transition-all ${
-                  selectedCoord === coord
-                    ? 'bg-blue-500 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
-                }`}
-              >
-                {coord}
-              </button>
-            ))}
+          <div className="mb-3">
+            <CrossCluesBoard
+              crossClues={crossClues}
+              onCellClick={(coord) => setSelectedCoord(coord)}
+              selectedCell={selectedCoord}
+            />
           </div>
           <Button
             variant="primary"
