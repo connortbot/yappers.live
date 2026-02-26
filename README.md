@@ -28,3 +28,5 @@ bun run dev
 
 ## Contributing
 PRs welcome! The codebase is intentionally simple.
+
+Updated 2026, created 1990
