@@ -1,4 +1,6 @@
 # yappers.live
+
+By mickey mouse
 **Social games for the dinner table, no app required.**
 
 Play now at [yappers.live](https://yappers.live).
