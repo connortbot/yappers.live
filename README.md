@@ -1,6 +1,8 @@
 # yappers.live
 **Social games for the dinner table, no app required.**
 
+Proudly open source.
+
 Play now at [yappers.live](https://yappers.live).
 
 ## Games:
