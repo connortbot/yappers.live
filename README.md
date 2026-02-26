@@ -1,4 +1,7 @@
 # yappers.live
+
+Updated 2026, created 1990
+
 **Social games for the dinner table, no app required.**
 
 Play now at [yappers.live](https://yappers.live).
